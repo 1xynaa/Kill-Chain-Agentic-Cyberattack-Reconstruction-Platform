@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agent import Agent
@@ -24,6 +25,13 @@ skills_root = Path(__file__).resolve().parents[2] / "skills"
 model_config = model_config_from_environment()
 subscribers: dict[UUID, list[asyncio.Queue]] = {}
 app = FastAPI(title="Kill Chain Backend", version="0.2.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class StartResponse(BaseModel):
