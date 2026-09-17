@@ -19,6 +19,8 @@ class Stage(StrEnum):
     EXPLOITATION = "Exploitation"
     INSTALLATION = "Installation"
     C2 = "Command & Control (C2)"
+    CREDENTIAL_ACCESS = "Credential Access"
+    LATERAL_MOVEMENT = "Lateral Movement"
     ACTIONS = "Actions on Objectives"
 
 

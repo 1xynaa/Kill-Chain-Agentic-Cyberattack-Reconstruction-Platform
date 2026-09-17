@@ -47,7 +47,7 @@ class ToolRunner:
                 "Extract packet-level endpoints, ports, DNS names, and HTTP indicators",
                 lambda p: [
                     "-r", str(p), "-Y", "ip", "-T", "fields", "-E", "header=y", "-E", "separator=|",
-                    "-e", "frame.number", "-e", "frame.time_relative", "-e", "ip.src", "-e", "ip.dst",
+                    "-e", "frame.number", "-e", "frame.time_epoch", "-e", "frame.time_relative", "-e", "ip.src", "-e", "ip.dst",
                     "-e", "tcp.srcport", "-e", "tcp.dstport", "-e", "tcp.flags.syn", "-e", "tcp.flags.ack",
                     "-e", "udp.srcport", "-e", "udp.dstport", "-e", "dns.qry.name", "-e", "http.host",
                     "-e", "http.request.uri",

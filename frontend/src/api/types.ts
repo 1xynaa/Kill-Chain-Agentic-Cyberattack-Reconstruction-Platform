@@ -9,6 +9,8 @@ export type Stage =
   | 'Exploitation'
   | 'Installation'
   | 'Command & Control (C2)'
+  | 'Credential Access'
+  | 'Lateral Movement'
   | 'Actions on Objectives'
 
 export const STAGE_ORDER: Stage[] = [
@@ -18,6 +20,8 @@ export const STAGE_ORDER: Stage[] = [
   'Exploitation',
   'Installation',
   'Command & Control (C2)',
+  'Credential Access',
+  'Lateral Movement',
   'Actions on Objectives',
 ]
 
@@ -28,6 +32,8 @@ export const STAGE_SHORT: Record<Stage, string> = {
   'Exploitation': 'Exploitation',
   'Installation': 'Installation',
   'Command & Control (C2)': 'C2',
+  'Credential Access': 'Credential Access',
+  'Lateral Movement': 'Lateral Movement',
   'Actions on Objectives': 'Actions',
 }
 
@@ -125,6 +131,6 @@ export interface SkillInfo {
 
 /** IOC extracted from findings for display */
 export interface IOCEntry {
-  type: 'ip' | 'url' | 'sha256' | 'domain'
+  type: 'ip' | 'url' | 'sha256' | 'domain' | 'process_name' | 'file_path' | 'registry_key' | 'service_name' | 'username' | 'dll_name'
   value: string
 }

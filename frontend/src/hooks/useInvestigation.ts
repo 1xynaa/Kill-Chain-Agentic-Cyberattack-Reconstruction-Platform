@@ -53,7 +53,7 @@ function deriveStageStatuses(
   isRunning: boolean,
 ): Record<string, StageStatus> {
   const result: Record<string, StageStatus> = {}
-  const ids = ['recon', 'weapon', 'deliver', 'exploit', 'install', 'c2', 'actions']
+  const ids = ['recon', 'weapon', 'deliver', 'exploit', 'install', 'c2', 'credential', 'lateral', 'actions']
   let lastConfirmedIdx = -1
 
   STAGE_ORDER.forEach((stage, idx) => {
@@ -81,10 +81,15 @@ function extractIOCs(findings: Finding[]): IOCEntry[] {
       if (seen.has(val)) continue
       seen.add(val)
       // Classify
-      let type: IOCEntry['type'] = 'domain'
+      let type: IOCEntry['type'] = 'username'
       if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(val)) type = 'ip'
       else if (/^https?:\/\//.test(val)) type = 'url'
       else if (/^[a-fA-F0-9]{64}$/.test(val)) type = 'sha256'
+      else if (/\.exe$/i.test(val)) type = 'process_name'
+      else if (/\.(dll|sys)$/i.test(val)) type = 'dll_name'
+      else if (/^(HKLM|HKCU|HKCR|HKU|HKEY_)/i.test(val)) type = 'registry_key'
+      else if (/^[A-Za-z]:/.test(val) && val.includes('\\')) type = 'file_path'
+      else if (/^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,63}$/i.test(val)) type = 'domain'
       iocs.push({ type, value: val })
     }
   }

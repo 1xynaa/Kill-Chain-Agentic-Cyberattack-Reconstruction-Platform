@@ -49,6 +49,8 @@ const STAGES = [
   { id:'exploit', label:'Exploitation' },
   { id:'install', label:'Installation' },
   { id:'c2',      label:'C2' },
+  { id:'credential', label:'Credential Access' },
+  { id:'lateral', label:'Lateral Movement' },
   { id:'actions', label:'Actions' },
 ]
 
@@ -435,7 +437,7 @@ function ReasoningFeed({ steps, thinking }: { steps:AgentStep[]; thinking:boolea
         <span style={{ marginLeft:10, fontSize:10, color:T2 }}>{steps.length} steps</span>
       </div>
 
-      <div ref={ref} style={{ flex:1, overflowY:'auto', padding:'8px 10px', display:'flex', flexDirection:'column', gap:3 }}>
+      <div ref={ref} className="reasoning-feed-scroll" aria-label="Agent reasoning steps" tabIndex={0} style={{ flex:1, minHeight:0, overflowY:'auto', padding:'8px 10px', display:'flex', flexDirection:'column', gap:3 }}>
         {steps.map((step, i) => (
           <StepCard key={step.id} step={step} isNew={i===steps.length-1 && steps.length>1}/>
         ))}
@@ -720,7 +722,7 @@ function CenterPanel({ state, status, sel, onSel, findings, iocs }: { state:AppS
       <div style={{ padding:'14px 20px 0', borderBottom:`1px solid ${EDGE}`, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:2 }}>
           <Label>Kill chain</Label>
-          <span style={{ fontSize:10, color:T2 }}>{done}/7 confirmed</span>
+          <span style={{ fontSize:10, color:T2 }}>{done}/{STAGES.length} confirmed</span>
         </div>
         <Stepper status={status} sel={sel} onSel={onSel}/>
       </div>
@@ -1033,7 +1035,7 @@ function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report
               {[
                 {l:`${report.timeline?.length || 0} findings`, c:T1},
                 {l:`${report.iocs?.length || 0} IOCs`, c:T1},
-                {l:`${Object.keys(report.stages || {}).length}/7 stages`, c:GREEN},
+                {l:`${Object.keys(report.stages || {}).length}/${STAGES.length} stages`, c:GREEN},
               ].map(b=>(
                 <span key={b.l} style={{ fontSize:10, color:b.c, padding:'2px 8px', border:`1px solid ${a(b.c,.25)}`, borderRadius:2 }}>{b.l}</span>
               ))}

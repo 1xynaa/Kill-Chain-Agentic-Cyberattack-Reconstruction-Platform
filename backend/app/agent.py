@@ -4,12 +4,13 @@ import asyncio
 import json
 import re
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
 from .ioc import extract_iocs
-from .killchain import classify, STAGE_ORDER
+from .killchain import classify
 from .models import Finding, Investigation, InvestigationEvent, MemoryRecord, ModelConfig, Stage
 from .providers import OpenAICompatibleProvider, ProviderError
 from .skills import SkillSummary, load_skill_catalog
@@ -58,6 +59,7 @@ class Agent:
             if selected:
                 await emit("skill_select", {"skills": [skill.name for skill in selected[:8]]}, refs)
             queue = self._initial_plan(evidence.stored_name, evidence.file_type or "", selected)
+            evidence_finding_start = len(investigation.findings)
             while queue and calls < self.settings.max_tool_calls:
                 tool = queue.pop(0)
                 thought = f"Inspect {evidence.stored_name} with {tool}; correlate its output with prior evidence."
@@ -78,26 +80,32 @@ class Agent:
                 await emit("thought", {"text": thought}, refs)
                 await emit("action", {"tool": tool, "path": evidence.stored_name}, refs)
                 result = self.runner.run(tool, workspace, evidence.stored_name)
-                await emit("observation", self._result(result), refs)
                 text = result.stdout or result.stderr or result.error or ""
+                observation = self._result(result, text)
+                await emit("observation", observation, refs)
                 stage, confidence = classify(text, evidence.original_name)
-                if text and stage:
+                if text and (stage or tool not in {"sha256sum", "file_triage"}):
                     iocs = [item["value"] for item in extract_iocs([text])]
-                    
-                    highest_idx = -1
-                    for s in STAGE_ORDER:
-                        if s in investigation.stages:
-                            highest_idx = STAGE_ORDER.index(s)
-                            
-                    current_idx = STAGE_ORDER.index(stage)
-                    is_tentative = current_idx > highest_idx + 1
-                    
-                    finding = Finding(title=f"{tool} finding", description=text[:2000], source_file=evidence.stored_name, stage=stage, confidence=confidence, iocs=iocs, tentative=is_tentative)
+                    timestamp = self._extract_timestamp(text)
+                    # Sequence is established from extracted artifact timestamps, not
+                    # from whichever tool happened to run first. Missing timestamps
+                    # are unknown, not evidence of an out-of-order attack.
+                    is_tentative = stage is not None and timestamp is None
+                    finding = Finding(title=f"{tool} finding", description=text[:2000], source_file=evidence.stored_name, stage=stage, confidence=confidence if stage else 0.45, iocs=iocs, tentative=is_tentative, timestamp=timestamp)
                     investigation.findings.append(finding)
-                    if not is_tentative:
+                    if stage and not is_tentative:
                         investigation.stages[stage] = max(confidence, investigation.stages.get(stage, 0))
-                    await emit("finding", finding.model_dump(mode="json"), refs, confidence)
-                    await emit("stage_update", {"stage": stage.value, "confidence": confidence, "tentative": is_tentative}, refs, confidence)
+                    await emit("finding", finding.model_dump(mode="json"), refs, finding.confidence)
+                    if stage:
+                        await emit("stage_update", {"stage": stage.value, "confidence": confidence, "tentative": is_tentative}, refs, confidence)
+            # A file must contribute an observation based on content even when no
+            # stage-specific rule matches. Hashes and file-type labels alone do not
+            # satisfy evidence coverage.
+            if len(investigation.findings) == evidence_finding_start:
+                coverage_text = f"No stage-specific behavior was confirmed; substantive artifact content was processed from {evidence.stored_name} ({evidence.file_type or 'unknown type'})."
+                finding = Finding(title="evidence content reviewed", description=coverage_text, source_file=evidence.stored_name, confidence=0.40)
+                investigation.findings.append(finding)
+                await emit("finding", finding.model_dump(mode="json"), refs, finding.confidence)
         investigation.status = "completed"
         await emit("status", {"status": "completed", "tool_calls": calls, "findings": len(investigation.findings)})
 
@@ -171,5 +179,30 @@ class Agent:
         return [item[2] for item in ranked[:8]]
 
     @staticmethod
-    def _result(result: Any) -> dict[str, Any]:
-        return {"tool": result.tool, "success": result.success, "available": result.available, "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr, "error": result.error}
+    def _extract_timestamp(text: str) -> datetime | None:
+        epoch = re.search(r"(?:^|\|)(1[5-9]\d{8,}|20\d{8,})(?:\.\d+)?(?:\||$)", text, re.MULTILINE)
+        if epoch:
+            try:
+                return datetime.fromtimestamp(float(epoch.group(1)), tz=timezone.utc)
+            except (ValueError, OverflowError, OSError):
+                pass
+        for pattern in (r"\b(20\d{2}-\d{2}-\d{2}[T ][0-9:.+-]+Z?)\b", r"\b(20\d{2}/\d{2}/\d{2}[ T][0-9:.+-]+)\b"):
+            match = re.search(pattern, text)
+            if match:
+                value = match.group(1).replace("Z", "+00:00").replace("/", "-")
+                try:
+                    parsed = datetime.fromisoformat(value)
+                    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+        return None
+
+    @staticmethod
+    def _result(result: Any, text: str = "") -> dict[str, Any]:
+        payload = {"tool": result.tool, "success": result.success, "available": result.available, "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr, "error": result.error}
+        if result.tool.startswith("tshark"):
+            lines = [line for line in text.splitlines() if line.strip()]
+            payload["records_analyzed"] = max(0, len(lines) - (1 if result.tool == "tshark_details" and lines else 0))
+        elif result.tool not in {"sha256sum", "file_triage"}:
+            payload["records_analyzed"] = len([line for line in text.splitlines() if line.strip()])
+        return payload

@@ -29,7 +29,15 @@ body {
 }
 
 /* Keep the dashboard breathable at normal browser scale. */
-.dashboard-layout { min-width: 0; }
+.dashboard-layout { min-width: 0; min-height: 0; }
+.dashboard-column { min-height: 0; }
+.reasoning-feed-scroll {
+  min-height: 0;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.reasoning-feed-scroll:focus-visible { outline: 1px solid #5B6AF5; outline-offset: -2px; }
 .dashboard-column-left { width: 27% !important; }
 .dashboard-column-center { flex: 1 1 auto !important; }
 .dashboard-column-right { width: 27% !important; }
