@@ -23,3 +23,9 @@ def test_network_tools_disabled_by_default(tmp_path: Path):
     result = ToolRunner(Settings(workspace_root=tmp_path)).run("dig", tmp_path, "example.com")
     assert result.success is False
     assert result.error == "network tools disabled"
+
+
+def test_tool_schema_contract_is_read_only_by_default():
+    names = {item["function"]["name"] for item in ToolRunner(Settings()).schemas()}
+    assert {"file_triage", "grep_indicators", "strings_extract", "tshark_summary", "sha256sum"} <= names
+    assert "nmap" not in names
