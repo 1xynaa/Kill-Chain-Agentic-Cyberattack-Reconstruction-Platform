@@ -23,7 +23,7 @@ The default configuration is intentionally conservative:
 - `POST /upload` — multipart upload of one or more evidence files
 - `POST /investigate/start/{id}` — start the bounded investigation loop
 - `GET /investigation/{id}` — current state and append-only events
-- `WS /ws/investigate/{id}` — live event stream for the dashboard
+- `WS /ws/investigate/{id}` — live event stream for the dashboard. The `stage_update` event payload includes `{stage: str, confidence: float, tentative: bool}` so the frontend can handle out-of-sequence stage discoveries correctly.
 - `GET /report/{id}` — JSON timeline, stages, narrative, and IOCs
 - `GET /tools` — available allowlisted tools on this host
 - `GET /skills` — indexed project skill catalog
@@ -39,6 +39,11 @@ Environment variables:
 - `KILLCHAIN_TOOL_TIMEOUT`
 - `KILLCHAIN_MAX_TOOL_CALLS`
 - `KILLCHAIN_ALLOW_NETWORK_TOOLS`
+- `GROQ_API_KEY` (when using Groq)
+- `OPENROUTER_API_KEY` (when using OpenRouter)
+- `KILLCHAIN_MODEL_PROVIDER` (for example, `openrouter`)
+- `KILLCHAIN_MODEL` (recommended free model: `nex-agi/nex-n2.5-pro:free`)
+- `KILLCHAIN_MODEL_BASE_URL` (optional; defaults to the selected provider URL)
 
 The provider layer currently accepts OpenAI-compatible providers including OpenRouter, OpenAI, Groq, DeepSeek, and xAI, plus arbitrary compatible base URLs. The deterministic rule-based path remains available when no model is configured, which keeps demos and tests reproducible.
 

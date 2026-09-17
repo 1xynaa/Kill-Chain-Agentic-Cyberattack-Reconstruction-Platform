@@ -1,20 +1,43 @@
 from __future__ import annotations
 
+import re
+
 from .models import Finding, Stage
 
+# These rules are deliberately specific. A generic word such as "dns", "ssh", or
+# "download" is not enough to establish a kill-chain stage.
 _RULES: list[tuple[tuple[str, ...], Stage, float]] = [
-    (("scan", "recon", "whois", "dns"), Stage.RECONNAISSANCE, 0.78),
-    (("payload", "malware", "archive", "weapon"), Stage.WEAPONIZATION, 0.70),
-    (("phish", "email", "download", "delivery"), Stage.DELIVERY, 0.76),
-    (("exploit", "brute", "credential", "sql injection", "failed", "ssh", "login"), Stage.EXPLOITATION, 0.82),
-    (("cron", "service", "persistence", "installed"), Stage.INSTALLATION, 0.84),
-    (("beacon", "c2", "command and control", "dns tunnel"), Stage.C2, 0.84),
-    (("exfil", "ransom", "encrypt", "impact", "objective"), Stage.ACTIONS, 0.85),
+    (("port scan", "network scan", "scanned ports", "whois", "osint", "enumeration", "reconnaissance"), Stage.RECONNAISSANCE, 0.82),
+    (("weaponized", "weaponization", "malicious archive"), Stage.WEAPONIZATION, 0.72),
+    (("phishing email", "email attachment", "malicious attachment", "delivery mechanism", "payload delivered"), Stage.DELIVERY, 0.80),
+    (("macro spawned", "exploit executed", "code execution", "shell spawned", "attacker code executes", "sql injection", "brute force", "failed ssh login", "exploit"), Stage.EXPLOITATION, 0.88),
+    (("written to disk", "payload written", "dropped payload", "registry run", "scheduled task", "service installed", "persistence established"), Stage.INSTALLATION, 0.88),
+    (("lsass", "mimikatz", "sekurlsa", "credential dump", "dumping credentials", "opened a handle to lsass"), Stage.CREDENTIAL_ACCESS, 0.91),
+    (("eventid=4624", "event id 4624", "smb session", "winrm session", "rdp session", "lateral movement", "authenticated to", "new logon"), Stage.LATERAL_MOVEMENT, 0.90),
+    (("recurring outbound", "beacon", "command and control", "c2 traffic", "dns tunnel"), Stage.C2, 0.86),
+    (("files encrypted", "file encryption", "exfiltrated", "data exfiltration", "destructive action", "actions on objectives", "impact"), Stage.ACTIONS, 0.90),
+]
+
+STAGE_ORDER = [
+    Stage.RECONNAISSANCE, Stage.WEAPONIZATION, Stage.DELIVERY,
+    Stage.EXPLOITATION, Stage.INSTALLATION, Stage.C2,
+    Stage.CREDENTIAL_ACCESS, Stage.LATERAL_MOVEMENT, Stage.ACTIONS,
 ]
 
 
 def classify(title: str, description: str) -> tuple[Stage | None, float]:
     text = f"{title} {description}".lower()
+    if any(term in text for term in (".locked", "readme_to_decrypt", "readme to decrypt", "ransom note", "ransomware impact")):
+        return Stage.ACTIONS, 0.93
+    # Installation evidence can mention a process or adjacent LSASS text
+    # without being a credential-access event. Reserve Credential Access for
+    # the explicit LSASS handle-open/access observation.
+    if any(term in text for term in ("written to disk", "payload written", "dropped payload", "registry run", "run key", "service installed", "persistence established")):
+        return Stage.INSTALLATION, 0.88
+    if "lsass" in text and any(term in text for term in ("handle", "opened", "open", "access")):
+        return Stage.CREDENTIAL_ACCESS, 0.91
+    if ("smb" in text or "445" in text) and re.search(r"(?:source|src)[=: ]+\S+.*(?:destination|dest|dst)[=: ]+\S+", text):
+        return Stage.LATERAL_MOVEMENT, 0.88
     for terms, stage, confidence in _RULES:
         if any(term in text for term in terms):
             return stage, confidence
@@ -27,3 +50,7 @@ def stage_scores(findings: list[Finding]) -> dict[Stage, float]:
         if finding.stage:
             scores[finding.stage] = max(scores.get(finding.stage, 0.0), finding.confidence)
     return scores
+
+
+def has_reconnaissance(findings: list[Finding]) -> bool:
+    return any(f.stage == Stage.RECONNAISSANCE for f in findings)

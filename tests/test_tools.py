@@ -4,6 +4,17 @@ from backend.app.config import Settings
 from backend.app.tools import ToolRunner
 
 
+def test_tshark_details_extracts_network_indicators(tmp_path: Path):
+    source = Path("evidence/attack_scenario.pcap")
+    evidence = tmp_path / source.name
+    evidence.write_bytes(source.read_bytes())
+    result = ToolRunner(Settings(workspace_root=tmp_path)).run("tshark_details", tmp_path, evidence.name)
+    assert result.success is True
+    assert "c2-beacon.attacker-domain.com" in result.stdout
+    assert "185.220.101.5" in result.stdout
+    assert "22" in result.stdout
+
+
 def test_unknown_tool_is_structured_error(tmp_path: Path):
     result = ToolRunner(Settings(workspace_root=tmp_path)).run("missing", tmp_path, "evidence.log")
     assert result.success is False
@@ -27,5 +38,5 @@ def test_network_tools_disabled_by_default(tmp_path: Path):
 
 def test_tool_schema_contract_is_read_only_by_default():
     names = {item["function"]["name"] for item in ToolRunner(Settings()).schemas()}
-    assert {"file_triage", "grep_indicators", "strings_extract", "tshark_summary", "sha256sum"} <= names
+    assert {"file_triage", "grep_indicators", "strings_extract", "tshark_summary", "tshark_details", "sha256sum"} <= names
     assert "nmap" not in names

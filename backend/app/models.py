@@ -19,6 +19,8 @@ class Stage(StrEnum):
     EXPLOITATION = "Exploitation"
     INSTALLATION = "Installation"
     C2 = "Command & Control (C2)"
+    CREDENTIAL_ACCESS = "Credential Access"
+    LATERAL_MOVEMENT = "Lateral Movement"
     ACTIONS = "Actions on Objectives"
 
 
@@ -39,6 +41,7 @@ class Investigation(BaseModel):
     events: list["InvestigationEvent"] = Field(default_factory=list)
     findings: list["Finding"] = Field(default_factory=list)
     stages: dict[Stage, float] = Field(default_factory=dict)
+    llm_narrative: str | None = None
     report: dict[str, Any] | None = None
 
 
@@ -59,8 +62,21 @@ class Finding(BaseModel):
     source_file: str | None = None
     stage: Stage | None = None
     confidence: float = Field(ge=0, le=1)
+    tentative: bool = False
     timestamp: datetime | None = None
     iocs: list[str] = Field(default_factory=list)
+
+
+class MemoryRecord(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    kind: str
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    source_investigation_id: UUID | None = None
+    source_finding_id: UUID | None = None
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class ModelConfig(BaseModel):
@@ -74,6 +90,7 @@ class ReportResponse(BaseModel):
     investigation_id: UUID
     status: str
     narrative: str
+    llm_narrative: str | None = None
     timeline: list[Finding]
     iocs: list[dict[str, Any]]
     stages: dict[Stage, float]

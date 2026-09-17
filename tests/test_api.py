@@ -23,6 +23,15 @@ def test_health_and_tool_catalog():
         assert any(item["name"] == "file_triage" for item in tools)
 
 
+def test_skill_catalog_endpoint_returns_structured_tools():
+    with TestClient(main.app) as client:
+        response = client.get("/skills")
+        assert response.status_code == 200
+        skills = response.json()
+        assert skills
+        assert isinstance(skills[0]["tools"], list)
+
+
 def test_upload_and_report_round_trip():
     with TestClient(main.app) as client:
         response = client.post("/upload", files={"files": ("auth.log", b"failed SSH login from 10.0.0.1", "text/plain")})
@@ -32,6 +41,29 @@ def test_upload_and_report_round_trip():
         report = client.get(f"/report/{investigation_id}")
         assert report.status_code == 200
         assert report.json()["investigation_id"] == investigation_id
+
+
+
+
+def test_pcap_investigation_report_contains_network_iocs():
+    with TestClient(main.app) as client:
+        data = Path("evidence/attack_scenario.pcap").read_bytes()
+        response = client.post("/upload", files={"files": ("attack_scenario.pcap", data, "application/vnd.tcpdump.pcap")})
+        investigation_id = response.json()["id"]
+        assert client.post(f"/investigate/start/{investigation_id}").status_code == 200
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            state = client.get(f"/investigation/{investigation_id}").json()
+            if state["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.02)
+        assert state["status"] == "completed"
+        report = client.get(f"/report/{investigation_id}")
+        assert report.status_code == 200
+        values = {item["value"] for item in report.json()["iocs"]}
+        assert "c2-beacon.attacker-domain.com" in values
+        assert "dns.qry.name" not in values
+        assert "185.220.101.5" in values
 
 
 def test_start_investigation_emits_completion():
@@ -49,7 +81,7 @@ def test_start_investigation_emits_completion():
         assert item["status"] == "completed"
         assert any(event["type"] == "observation" for event in item["events"])
         assert item["findings"]
-        assert item["findings"][0]["stage"] == "Exploitation"
+        assert any(f["stage"] == "Exploitation" for f in item["findings"])
 
 
 def test_websocket_replays_existing_events():
@@ -82,3 +114,35 @@ def test_unknown_provider_requires_base_url():
     with TestClient(main.app) as client:
         response = client.post("/config/model", json={"provider": "custom", "model": "test", "api_key": "secret-value"})
         assert response.status_code == 400
+
+
+def test_replay_investigation():
+    with TestClient(main.app) as client:
+        response = client.post("/upload", files={"files": ("auth.log", b"failed SSH login from 10.0.0.1", "text/plain")})
+        investigation_id = response.json()["id"]
+        client.post(f"/investigate/start/{investigation_id}")
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            state = client.get(f"/investigation/{investigation_id}").json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.01)
+            
+        assert state["status"] == "completed"
+        num_events = len(state["events"])
+        
+        with client.websocket_connect(f"/ws/investigate/{investigation_id}") as websocket:
+            for _ in range(num_events):
+                websocket.receive_json()
+                
+            replay_res = client.post(f"/replay/{investigation_id}?speed=100.0")
+            assert replay_res.status_code == 200
+            
+            replayed_events = []
+            for _ in range(num_events):
+                replayed_events.append(websocket.receive_json())
+                
+            assert len(replayed_events) == num_events
+            for original, replayed in zip(state["events"], replayed_events):
+                assert original["sequence"] == replayed["sequence"]
+                assert original["type"] == replayed["type"]

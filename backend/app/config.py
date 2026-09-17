@@ -13,6 +13,7 @@ class Settings(BaseModel):
     max_tool_output: int = int(os.getenv("KILLCHAIN_MAX_TOOL_OUTPUT", "20000"))
     tool_timeout: int = int(os.getenv("KILLCHAIN_TOOL_TIMEOUT", "30"))
     max_tool_calls: int = int(os.getenv("KILLCHAIN_MAX_TOOL_CALLS", "20"))
+    max_model_decisions: int = int(os.getenv("KILLCHAIN_MAX_MODEL_DECISIONS", "1"))
     allow_network_tools: bool = os.getenv("KILLCHAIN_ALLOW_NETWORK_TOOLS", "false").lower() == "true"
 
     def model_post_init(self, __context: object) -> None:
