@@ -37,6 +37,7 @@ export interface InvestigationState {
   stageScores: Partial<Record<Stage, number>>
   iocs: IOCEntry[]
   report: ReportResponse | null
+  llmNarrative: string | null
   elapsed: number
   toolCalls: number
   thinking: boolean
@@ -103,6 +104,7 @@ export function useInvestigation(): InvestigationState {
   const [findings, setFindings] = useState<Finding[]>([])
   const [stageScores, setStageScores] = useState<Partial<Record<Stage, number>>>({})
   const [report, setReport] = useState<ReportResponse | null>(null)
+  const [llmNarrative, setLlmNarrative] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [toolCalls, setToolCalls] = useState(0)
   const [thinking, setThinking] = useState(false)
@@ -200,6 +202,12 @@ export function useInvestigation(): InvestigationState {
         break
       }
 
+      case 'llm_narrative': {
+        const text = typeof payload.text === 'string' ? payload.text.trim() : ''
+        if (text) setLlmNarrative(text)
+        break
+      }
+
       case 'stage_update': {
         if (!payload.tentative) {
           setStageScores((prev) => ({
@@ -281,6 +289,7 @@ export function useInvestigation(): InvestigationState {
     setFindings([])
     setStageScores({})
     setReport(null)
+    setLlmNarrative(null)
     setElapsed(0)
     setToolCalls(0)
     setThinking(false)
@@ -297,6 +306,7 @@ export function useInvestigation(): InvestigationState {
     stageScores,
     iocs,
     report,
+    llmNarrative,
     elapsed,
     toolCalls,
     thinking,

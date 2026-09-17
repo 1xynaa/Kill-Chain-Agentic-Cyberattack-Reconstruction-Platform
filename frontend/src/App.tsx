@@ -919,6 +919,7 @@ function PrintReport({ report }: { report: any }) {
   const activity = sectionText('FORENSIC ACTIVITY', 'LIMITATIONS') || 'No forensic tool activity was recorded.'
   const limitations = sectionText('LIMITATIONS') || 'No limitations recorded.'
   const summary = sectionText('EXECUTIVE SUMMARY', 'EVIDENCE EXAMINED') || 'No executive summary available.'
+  const attackPath = report.llm_narrative || 'No hosted-model attack-path narrative was generated; this report contains deterministic evidence analysis only.'
 
   return (
     <main className="print-report">
@@ -940,6 +941,11 @@ function PrintReport({ report }: { report: any }) {
       <section className="print-section">
         <h2>Executive summary</h2>
         <p>{summary}</p>
+      </section>
+
+      <section className="print-section print-attack-path">
+        <h2>How the attack was carried out — plain English</h2>
+        <p>{attackPath}</p>
       </section>
 
       <section className="print-section">
@@ -989,7 +995,7 @@ function PrintReport({ report }: { report: any }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom drawer — real report from backend
 // ─────────────────────────────────────────────────────────────────────────────
-function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report:any; toolCalls:number; elapsed:number }) {
+function Drawer({ state, report, llmNarrative, toolCalls, elapsed }: { state: AppState; report:any; llmNarrative:string|null; toolCalls:number; elapsed:number }) {
   const done = state === 'complete'
   const [open, setOpen] = useState(false)
   useEffect(()=>{ if(done){const t=setTimeout(()=>setOpen(true),800);return()=>clearTimeout(t)}else setOpen(false) },[done])
@@ -1020,18 +1026,20 @@ function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report
         </svg>
       </button>
 
-      {open && report && (
+      {open && (report || llmNarrative) && (
         <div className="fade-up" style={{ padding:'0 20px 20px', display:'grid', gridTemplateColumns:'1fr 180px', gap:16, maxHeight:270, overflow:'hidden' }}>
           {/* Narrative */}
           <div style={{ background:PANEL2, border:`1px solid ${EDGE}`, borderRadius:3, padding:16, overflowY:'auto' }}>
-            <div style={{ fontSize:10, color:T2, marginBottom:10 }}>{report.investigation_id}</div>
-            <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>
-              Investigation Report
-            </h3>
-            <p style={{ fontSize:12, color:T1, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>
-              {report.narrative}
-            </p>
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <div style={{ fontSize:10, color:T2, marginBottom:10 }}>{report?.investigation_id || 'LIVE AGENT RESPONSE'}</div>
+            {llmNarrative && <>
+              <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>AI attack-path reconstruction</h3>
+              <p style={{ fontSize:12, color:T0, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>{llmNarrative}</p>
+            </>}
+            {report && <>
+              <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>Investigation Report</h3>
+              <p style={{ fontSize:12, color:T1, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>{report.narrative}</p>
+            </>}
+            {report && <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {[
                 {l:`${report.timeline?.length || 0} findings`, c:T1},
                 {l:`${report.iocs?.length || 0} IOCs`, c:T1},
@@ -1039,7 +1047,7 @@ function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report
               ].map(b=>(
                 <span key={b.l} style={{ fontSize:10, color:b.c, padding:'2px 8px', border:`1px solid ${a(b.c,.25)}`, borderRadius:2 }}>{b.l}</span>
               ))}
-            </div>
+            </div>}
           </div>
 
           {/* Actions */}
@@ -1338,7 +1346,7 @@ export default function App() {
                   <RightPanel finds={inv.findings} iocs={inv.iocs} investigationId={inv.investigationId}/>
                 </div>
               </div>
-              <Drawer state={dashState} report={inv.report} toolCalls={inv.toolCalls} elapsed={inv.elapsed}/>
+              <Drawer state={dashState} report={inv.report} llmNarrative={inv.llmNarrative} toolCalls={inv.toolCalls} elapsed={inv.elapsed}/>
 
               {/* Error banner */}
               {inv.error && (

@@ -30,6 +30,7 @@ class Agent:
         investigation.status = "running"
         sequence = len(investigation.events)
         calls = 0
+        model_decisions = 0
         catalog = load_skill_catalog(self.skills_root)
 
         async def emit(kind: str, payload: dict[str, Any], refs: list[str] | None = None, confidence: float | None = None):
@@ -63,8 +64,9 @@ class Agent:
             while queue and calls < self.settings.max_tool_calls:
                 tool = queue.pop(0)
                 thought = f"Inspect {evidence.stored_name} with {tool}; correlate its output with prior evidence."
-                if self.config.provider != "rule_based":
+                if self.config.provider != "rule_based" and model_decisions < self.settings.max_model_decisions:
                     try:
+                        model_decisions += 1
                         decision = await self._model_decision(investigation, evidence.stored_name, tool, selected, prior_memories)
                         thought = decision.get("thought", thought)
                         candidate = decision.get("tool", tool)
@@ -106,6 +108,14 @@ class Agent:
                 finding = Finding(title="evidence content reviewed", description=coverage_text, source_file=evidence.stored_name, confidence=0.40)
                 investigation.findings.append(finding)
                 await emit("finding", finding.model_dump(mode="json"), refs, finding.confidence)
+        if self.config.provider != "rule_based":
+            try:
+                narrative = await self._model_narrative(investigation)
+                if narrative:
+                    investigation.llm_narrative = narrative
+                    await emit("llm_narrative", {"text": narrative, "provider": self.config.provider, "model": self.config.model})
+            except ProviderError as exc:
+                await emit("provider_error", {"error": str(exc), "fallback": "deterministic_report"})
         investigation.status = "completed"
         await emit("status", {"status": "completed", "tool_calls": calls, "findings": len(investigation.findings)})
 
@@ -135,6 +145,26 @@ class Agent:
             return value
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise ProviderError("model response must be a JSON decision object") from exc
+
+    async def _model_narrative(self, investigation: Investigation) -> str:
+        provider = OpenAICompatibleProvider(self.config)
+        system_prompt = (
+            "You are the senior forensic analyst writing the final report for a non-specialist incident reviewer. "
+            "Using only the supplied evidence and findings, explain in plain English how the attack was carried out, "
+            "in chronological order. Clearly label observed facts versus reasonable hypotheses, name the evidence "
+            "supporting each step, and explicitly say when a stage is unconfirmed. Do not invent missing steps, "
+            "credentials, victims, or attacker intent. Return only 3-6 concise paragraphs with no markdown heading."
+        )
+        context = {
+            "files": [item.model_dump(mode="json") for item in investigation.files],
+            "confirmed_stages": {str(key): value for key, value in investigation.stages.items()},
+            "findings": [item.model_dump(mode="json") for item in investigation.findings],
+        }
+        response = await asyncio.to_thread(provider.complete, [{"role": "system", "content": system_prompt}, {"role": "user", "content": json.dumps(context)}])
+        text = response.content.strip()
+        if not text:
+            raise ProviderError("provider returned an empty narrative")
+        return text
 
     def _initial_plan(self, name: str, file_type: str, selected_skills: list[SkillSummary] = None) -> list[str]:
         lower = name.lower() + " " + file_type.lower()

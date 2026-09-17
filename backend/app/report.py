@@ -134,4 +134,6 @@ def build_report(investigation: Investigation) -> ReportResponse:
         f"LIMITATIONS\nThis reconstruction reflects only observable output from submitted artifacts and bounded tools. "
         f"Unconfirmed stages are explicitly reported as no evidence, not inferred as fact."
     )
-    return ReportResponse(investigation_id=investigation.id, status=investigation.status, narrative=narrative, timeline=ordered, iocs=iocs, stages=scores)
+    if investigation.llm_narrative:
+        narrative += f"\n\nPLAIN-ENGLISH ATTACK PATH FROM THE AGENT\n{investigation.llm_narrative}"
+    return ReportResponse(investigation_id=investigation.id, status=investigation.status, narrative=narrative, llm_narrative=investigation.llm_narrative, timeline=ordered, iocs=iocs, stages=scores)

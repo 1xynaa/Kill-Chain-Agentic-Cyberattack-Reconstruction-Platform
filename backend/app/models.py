@@ -41,6 +41,7 @@ class Investigation(BaseModel):
     events: list["InvestigationEvent"] = Field(default_factory=list)
     findings: list["Finding"] = Field(default_factory=list)
     stages: dict[Stage, float] = Field(default_factory=dict)
+    llm_narrative: str | None = None
     report: dict[str, Any] | None = None
 
 
@@ -89,6 +90,7 @@ class ReportResponse(BaseModel):
     investigation_id: UUID
     status: str
     narrative: str
+    llm_narrative: str | None = None
     timeline: list[Finding]
     iocs: list[dict[str, Any]]
     stages: dict[Stage, float]

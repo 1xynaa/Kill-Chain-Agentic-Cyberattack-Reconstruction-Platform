@@ -60,6 +60,17 @@ def test_report_tracks_substantive_evidence_coverage():
     assert "substantive" in report.narrative.lower()
 
 
+def test_report_includes_llm_attack_path_narrative():
+    inv = Investigation(
+        status="completed",
+        files=[EvidenceFile(original_name="security.log", stored_name="security.log", size=1, sha256="a" * 64)],
+        llm_narrative="The attacker first authenticated to the exposed service, then moved laterally to the file server.",
+    )
+    report = build_report(inv)
+    assert report.llm_narrative == inv.llm_narrative
+    assert "attacker first authenticated" in report.narrative.lower()
+
+
 def test_lateral_movement_sources_are_merged_when_hosts_and_time_correlate():
     stamp = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
     inv = Investigation(

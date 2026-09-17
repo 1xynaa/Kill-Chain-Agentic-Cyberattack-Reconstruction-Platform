@@ -107,6 +107,7 @@ export interface ReportResponse {
   investigation_id: string
   status: string
   narrative: string
+  llm_narrative?: string | null
   timeline: Finding[]
   iocs: { type: string; value: string }[]
   stages: Partial<Record<Stage, number>>
