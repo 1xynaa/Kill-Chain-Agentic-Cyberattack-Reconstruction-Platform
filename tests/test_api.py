@@ -75,3 +75,10 @@ def test_model_config_does_not_echo_api_key():
         response = client.post("/config/model", json={"provider": "openrouter", "model": "test", "api_key": "secret-value"})
         assert response.status_code == 200
         assert response.json()["api_key"] == "[configured]"
+        assert response.json()["base_url"] == "https://openrouter.ai/api/v1"
+
+
+def test_unknown_provider_requires_base_url():
+    with TestClient(main.app) as client:
+        response = client.post("/config/model", json={"provider": "custom", "model": "test", "api_key": "secret-value"})
+        assert response.status_code == 400

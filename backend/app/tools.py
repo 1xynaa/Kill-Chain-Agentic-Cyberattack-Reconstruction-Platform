@@ -54,6 +54,9 @@ class ToolRunner:
     def available(self) -> list[dict[str, object]]:
         return [{"name": s.name, "executable": s.executable, "available": shutil.which(s.executable) is not None, "network": s.network, "description": s.description} for s in self.specs.values()]
 
+    def schemas(self) -> list[dict[str, object]]:
+        return [{"type": "function", "function": {"name": s.name, "description": s.description, "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}} for s in self.specs.values() if not s.network]
+
     def run(self, name: str, workspace: Path, relative_path: str) -> ToolResult:
         spec = self.specs.get(name)
         if not spec:
