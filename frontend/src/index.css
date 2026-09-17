@@ -38,6 +38,10 @@ body {
   scrollbar-width: thin;
 }
 .reasoning-feed-scroll:focus-visible { outline: 1px solid #5B6AF5; outline-offset: -2px; }
+.reasoning-feed-scroll > div { flex: 0 0 auto; }
+.report-drawer-narrative { min-width: 0; }
+.report-drawer-narrative p { overflow-wrap: anywhere; }
+.report-drawer-content button:disabled { cursor: not-allowed !important; opacity: .45; }
 .dashboard-column-left { width: 27% !important; }
 .dashboard-column-center { flex: 1 1 auto !important; }
 .dashboard-column-right { width: 27% !important; }

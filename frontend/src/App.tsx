@@ -427,7 +427,9 @@ function ReasoningFeed({ steps, thinking }: { steps:AgentStep[]; thinking:boolea
   useEffect(()=>{
     if (steps.length !== prev.current) {
       prev.current = steps.length
-      setExpandedId(steps.at(-1)?.id ?? null)
+      // Keep the feed scannable while the agent is working. Details are
+      // available on demand instead of opening every new observation.
+      setExpandedId(null)
       requestAnimationFrame(()=>{ if (ref.current) ref.current.scrollTop = ref.current.scrollHeight })
     }
   },[steps])
@@ -483,7 +485,9 @@ function StepCard({ step, isNew, open, onToggle }: { step:AgentStep; isNew:boole
         }}>
         <span style={{ width:5, height:5, borderRadius:'50%', background:col, flexShrink:0, marginTop:4 }}/>
         <span style={{ flex:1, fontSize:11, color:T1, lineHeight:1.5 }}>
-          {step.thought || `Running ${step.tool}…`}
+          {(step.thought || `Running ${step.tool}…`).length > 180
+            ? `${(step.thought || `Running ${step.tool}…`).slice(0, 180)}…`
+            : (step.thought || `Running ${step.tool}…`)}
         </span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
           style={{ transform:open?'rotate(180deg)':'none', transition:'transform .2s', flexShrink:0, marginTop:2, opacity:.4 }}>
@@ -1006,7 +1010,7 @@ function Drawer({ state, report, llmNarrative, toolCalls, elapsed }: { state: Ap
     <div style={{
       flexShrink:0, background:PANEL,
       borderTop:`1px solid ${EDGE}`,
-      maxHeight: open ? 320 : 42,
+      maxHeight: open ? 360 : 42,
       overflow:'hidden', transition:'max-height .35s cubic-bezier(.4,0,.2,1)',
     }}>
       <button onClick={()=>setOpen(o=>!o)} style={{
@@ -1027,18 +1031,16 @@ function Drawer({ state, report, llmNarrative, toolCalls, elapsed }: { state: Ap
       </button>
 
       {open && (report || llmNarrative) && (
-        <div className="fade-up" style={{ padding:'0 20px 20px', display:'grid', gridTemplateColumns:'1fr 180px', gap:16, maxHeight:270, overflow:'hidden' }}>
+        <div className="fade-up report-drawer-content" style={{ padding:'0 20px 20px', display:'grid', gridTemplateColumns:'minmax(0, 1fr) 180px', gap:16, maxHeight:318, overflow:'hidden' }}>
           {/* Narrative */}
-          <div style={{ background:PANEL2, border:`1px solid ${EDGE}`, borderRadius:3, padding:16, overflowY:'auto' }}>
+          <div className="report-drawer-narrative" style={{ background:PANEL2, border:`1px solid ${EDGE}`, borderRadius:3, padding:16, overflowY:'auto' }}>
             <div style={{ fontSize:10, color:T2, marginBottom:10 }}>{report?.investigation_id || 'LIVE AGENT RESPONSE'}</div>
-            {llmNarrative && <>
-              <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>AI attack-path reconstruction</h3>
-              <p style={{ fontSize:12, color:T0, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>{llmNarrative}</p>
-            </>}
-            {report && <>
-              <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>Investigation Report</h3>
-              <p style={{ fontSize:12, color:T1, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>{report.narrative}</p>
-            </>}
+            <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>
+              {llmNarrative ? 'AI attack-path reconstruction' : 'Investigation report'}
+            </h3>
+            <p style={{ fontSize:12, color:llmNarrative ? T0 : T1, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>
+              {llmNarrative || report?.narrative || 'Report details are not available yet.'}
+            </p>
             {report && <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {[
                 {l:`${report.timeline?.length || 0} findings`, c:T1},
@@ -1052,14 +1054,15 @@ function Drawer({ state, report, llmNarrative, toolCalls, elapsed }: { state: Ap
 
           {/* Actions */}
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {[{l:'Export PDF',c:T0, onClick:exportPdf},{l:'Export JSON',c:T0, onClick:()=>exportJson(report)},{l:'Export STIX 2.1',c:T0, onClick:()=>exportStix(report)}].map(btn=>(
+            {[{l:'Export PDF',c:T0, onClick:exportPdf},{l:'Export JSON',c:T0, onClick:()=>exportJson(report), disabled:!report},{l:'Export STIX 2.1',c:T0, onClick:()=>exportStix(report), disabled:!report}].map(btn=>(
               <button key={btn.l} style={{
                 padding:'9px 14px', textAlign:'left',
                 background:PANEL2, border:`1px solid ${EDGE}`, borderRadius:3,
                 fontSize:11, color:btn.c, cursor:'pointer', transition:'border-color .15s',
               }}
-              onMouseEnter={e=>{ e.currentTarget.style.borderColor=EDGE2; e.currentTarget.style.color=T0 }}
-              onMouseLeave={e=>{ e.currentTarget.style.borderColor=EDGE; e.currentTarget.style.color=btn.c }}
+              disabled={btn.disabled}
+              onMouseEnter={e=>{ if (!btn.disabled) { e.currentTarget.style.borderColor=EDGE2; e.currentTarget.style.color=T0 } }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=EDGE; e.currentTarget.style.color=btn.disabled ? T2 : btn.c }}
               onClick={btn.onClick}>
                 {btn.l}
               </button>
