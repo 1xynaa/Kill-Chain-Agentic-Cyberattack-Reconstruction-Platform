@@ -1,11 +1,38 @@
 import pytest
 import asyncio
 from pathlib import Path
+from uuid import UUID
 from backend.app.agent import Agent
 from backend.app.config import Settings
 from backend.app.tools import ToolRunner
 from backend.app.models import Investigation, EvidenceFile
 import uuid
+
+
+
+def test_agent_pcap_surfaces_dns_and_network_indicators(tmp_path: Path):
+    source = Path("evidence/attack_scenario.pcap")
+    investigation_id = str(uuid.uuid4())
+    workspace = tmp_path / investigation_id
+    workspace.mkdir(parents=True)
+    destination = workspace / source.name
+    destination.write_bytes(source.read_bytes())
+    investigation = Investigation(
+        id=UUID(investigation_id),
+        files=[EvidenceFile(original_name=source.name, stored_name=source.name, file_type="pcap", size=source.stat().st_size, sha256="")],
+    )
+    events = []
+
+    async def sink(event):
+        events.append(event)
+
+    settings = Settings(workspace_root=tmp_path, max_tool_calls=6)
+    asyncio.run(Agent(settings, ToolRunner(settings), Path("skills")).investigate(investigation, sink))
+    descriptions = "\n".join(finding.description for finding in investigation.findings)
+    assert "c2-beacon.attacker-domain.com" in descriptions
+    assert "185.220.101.5" in descriptions
+    assert any(finding.stage == "Command & Control (C2)" for finding in investigation.findings)
+
 
 def test_agent_investigate_extracts_iocs_from_auth_log(tmp_path: Path):
     settings = Settings(workspace_root=tmp_path, max_tool_calls=5)

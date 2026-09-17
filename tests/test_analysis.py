@@ -6,8 +6,8 @@ from backend.app.models import Stage
 
 
 def test_extract_iocs_deduplicates_and_rejects_invalid_ip():
-    result = extract_iocs(["src=10.0.0.1 dst=999.1.1.1 https://evil.example/a 10.0.0.1"])
-    assert {item["value"] for item in result} == {"10.0.0.1", "https://evil.example/a", "evil.example"}
+    result = extract_iocs(["src=10.0.0.1 dst=999.1.1.1 https://evil.example/a 10.0.0.1 dns.qry.name ip.dst c2-beacon.attacker-domain.com"])
+    assert {item["value"] for item in result} == {"10.0.0.1", "https://evil.example/a", "evil.example", "c2-beacon.attacker-domain.com"}
 
 
 def test_classify_brute_force_as_exploitation():

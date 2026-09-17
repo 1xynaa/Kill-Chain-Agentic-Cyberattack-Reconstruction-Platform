@@ -41,6 +41,18 @@ class ToolRunner:
             "strings_extract": ToolSpec("strings_extract", "strings", "Extract printable strings", lambda p: ["-n", "6", str(p)]),
             "sha256sum": ToolSpec("sha256sum", "sha256sum", "Hash evidence", lambda p: [str(p)]),
             "tshark_summary": ToolSpec("tshark_summary", "tshark", "Summarize packet capture conversations", lambda p: ["-r", str(p), "-q", "-z", "conv,ip"]),
+            "tshark_details": ToolSpec(
+                "tshark_details",
+                "tshark",
+                "Extract packet-level endpoints, ports, DNS names, and HTTP indicators",
+                lambda p: [
+                    "-r", str(p), "-Y", "ip", "-T", "fields", "-E", "header=y", "-E", "separator=|",
+                    "-e", "frame.number", "-e", "frame.time_relative", "-e", "ip.src", "-e", "ip.dst",
+                    "-e", "tcp.srcport", "-e", "tcp.dstport", "-e", "tcp.flags.syn", "-e", "tcp.flags.ack",
+                    "-e", "udp.srcport", "-e", "udp.dstport", "-e", "dns.qry.name", "-e", "http.host",
+                    "-e", "http.request.uri",
+                ],
+            ),
             "yara_scan": ToolSpec("yara_scan", "yara", "Scan evidence with YARA", lambda p: ["-r", "rules.yar", str(p)]),
             "volatility_info": ToolSpec("volatility_info", "vol", "Identify memory image metadata", lambda p: ["-f", str(p), "windows.info"]),
             "binwalk_scan": ToolSpec("binwalk_scan", "binwalk", "Inspect embedded firmware content", lambda p: ["--run-as=root", str(p)]),

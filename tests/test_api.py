@@ -34,6 +34,29 @@ def test_upload_and_report_round_trip():
         assert report.json()["investigation_id"] == investigation_id
 
 
+
+
+def test_pcap_investigation_report_contains_network_iocs():
+    with TestClient(main.app) as client:
+        data = Path("evidence/attack_scenario.pcap").read_bytes()
+        response = client.post("/upload", files={"files": ("attack_scenario.pcap", data, "application/vnd.tcpdump.pcap")})
+        investigation_id = response.json()["id"]
+        assert client.post(f"/investigate/start/{investigation_id}").status_code == 200
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            state = client.get(f"/investigation/{investigation_id}").json()
+            if state["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.02)
+        assert state["status"] == "completed"
+        report = client.get(f"/report/{investigation_id}")
+        assert report.status_code == 200
+        values = {item["value"] for item in report.json()["iocs"]}
+        assert "c2-beacon.attacker-domain.com" in values
+        assert "dns.qry.name" not in values
+        assert "185.220.101.5" in values
+
+
 def test_start_investigation_emits_completion():
     with TestClient(main.app) as client:
         response = client.post("/upload", files={"files": ("auth.log", b"failed SSH login from 10.0.0.1", "text/plain")})

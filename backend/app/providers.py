@@ -19,6 +19,33 @@ class ProviderError(RuntimeError):
     pass
 
 
+def decision_from_message(message: dict[str, Any]) -> str:
+    """Return normalized decision JSON from content or OpenAI tool calls."""
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    calls = message.get("tool_calls") or []
+    if calls:
+        call = calls[0] if isinstance(calls[0], dict) else {}
+        function = call.get("function") or {}
+        name = function.get("name")
+        arguments = function.get("arguments") or "{}"
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        decision = {
+            "thought": str(arguments.get("thought", "")),
+            "tool": name,
+            "done": bool(arguments.get("done", False)),
+        }
+        return json.dumps(decision)
+    return ""
+
+
 class OpenAICompatibleProvider:
     def __init__(self, config: ModelConfig):
         if not config.base_url or not config.api_key:
@@ -36,7 +63,7 @@ class OpenAICompatibleProvider:
         except Exception as exc:
             raise ProviderError(str(exc)) from exc
         try:
-            return ProviderResponse(raw["choices"][0]["message"].get("content", ""), raw)
+            return ProviderResponse(decision_from_message(raw["choices"][0]["message"]), raw)
         except (KeyError, IndexError, TypeError) as exc:
             raise ProviderError("provider returned an invalid chat completion") from exc
 

@@ -3,12 +3,12 @@ from __future__ import annotations
 from .models import Finding, Stage
 
 _RULES: list[tuple[tuple[str, ...], Stage, float]] = [
+    (("beacon", "c2", "command and control", "dns tunnel"), Stage.C2, 0.84),
     (("scan", "recon", "whois", "dns"), Stage.RECONNAISSANCE, 0.78),
     (("payload", "malware", "archive", "weapon"), Stage.WEAPONIZATION, 0.70),
     (("phish", "email", "download", "delivery"), Stage.DELIVERY, 0.76),
     (("exploit", "brute", "credential", "sql injection", "failed", "ssh", "login"), Stage.EXPLOITATION, 0.82),
     (("cron", "service", "persistence", "installed"), Stage.INSTALLATION, 0.84),
-    (("beacon", "c2", "command and control", "dns tunnel"), Stage.C2, 0.84),
     (("exfil", "ransom", "encrypt", "impact", "objective"), Stage.ACTIONS, 0.85),
 ]
 

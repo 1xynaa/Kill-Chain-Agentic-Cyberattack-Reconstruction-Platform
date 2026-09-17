@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -64,7 +65,11 @@ class Agent:
                     try:
                         decision = await self._model_decision(investigation, evidence.stored_name, tool, selected, prior_memories)
                         thought = decision.get("thought", thought)
-                        tool = decision.get("tool", tool)
+                        candidate = decision.get("tool", tool)
+                        allowed_tools = {item["function"]["name"] for item in self.runner.schemas()}
+                        if candidate not in allowed_tools:
+                            raise ProviderError("model selected an unavailable tool")
+                        tool = candidate
                         if decision.get("done"):
                             break
                     except ProviderError as exc:
@@ -126,7 +131,7 @@ class Agent:
     def _initial_plan(self, name: str, file_type: str, selected_skills: list[SkillSummary] = None) -> list[str]:
         lower = name.lower() + " " + file_type.lower()
         if name.lower().endswith((".pcap", ".pcapng")) or "pcap" in lower:
-            queue = ["tshark_summary", "strings_extract", "sha256sum"]
+            queue = ["tshark_summary", "tshark_details", "strings_extract", "sha256sum"]
         elif "memory" in lower or name.lower().endswith((".raw", ".dmp", ".mem")):
             queue = ["strings_extract", "volatility_info", "sha256sum"]
         else:
@@ -144,8 +149,26 @@ class Agent:
 
     @staticmethod
     def _select_skills(catalog: list[SkillSummary], text: str) -> list[SkillSummary]:
-        terms = set(text.lower().replace("_", " ").split())
-        return [skill for skill in catalog if terms & set(skill.name.lower().replace("-", " ").split())]
+        query = set(re.findall(r"[a-z0-9]+", text.lower()))
+        if not query:
+            return []
+        evidence_weights = {
+            "pcap": {"pcap", "pcapng", "packet", "traffic", "tshark", "wireshark", "network", "dns"},
+            "pcapng": {"pcap", "pcapng", "packet", "traffic", "tshark", "wireshark", "network", "dns"},
+            "memory": {"memory", "volatility", "ram", "dump", "forensics"},
+            "apk": {"android", "apk", "mobile", "jadx", "frida"},
+            "pdf": {"pdf", "document", "malware", "peepdf"},
+        }
+        boosted = set().union(*(evidence_weights[key] for key in query if key in evidence_weights))
+        ranked: list[tuple[int, int, SkillSummary]] = []
+        for index, skill in enumerate(catalog):
+            corpus = " ".join((skill.name, skill.description, skill.overview, skill.when_to_use)).lower()
+            tokens = set(re.findall(r"[a-z0-9]+", corpus))
+            score = len(query & tokens) + 3 * len(boosted & tokens)
+            if score:
+                ranked.append((score, -index, skill))
+        ranked.sort(reverse=True, key=lambda item: (item[0], item[1]))
+        return [item[2] for item in ranked[:8]]
 
     @staticmethod
     def _result(result: Any) -> dict[str, Any]:
