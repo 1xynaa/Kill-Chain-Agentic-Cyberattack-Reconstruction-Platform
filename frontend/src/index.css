@@ -19,7 +19,32 @@ body {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Scale the dense forensic dashboard for comfortable reading at default browser zoom. */
+.root-bg {
   zoom: 1.15;
+  width: 86.9565vw !important;
+  height: 86.9565vh !important;
+}
+
+/* Keep the dashboard breathable at normal browser scale. */
+.dashboard-layout { min-width: 0; }
+.dashboard-column-left { width: 27% !important; }
+.dashboard-column-center { flex: 1 1 auto !important; }
+.dashboard-column-right { width: 27% !important; }
+.topbar.empty .topbar-actions > * { display: none !important; }
+
+@media (max-width: 980px) {
+  .dashboard-column-left { width: 32% !important; }
+  .dashboard-column-right { width: 32% !important; }
+  .dashboard-column-center { display: none !important; }
+}
+
+@media (max-width: 680px) {
+  .dashboard-column-left,
+  .dashboard-column-right { width: 50% !important; }
+  .dashboard-column-left { border-right: 1px solid #1E222A; }
 }
 
 /* Dot grid — subtle, low contrast */
@@ -112,4 +137,13 @@ body {
 .check-draw {
   stroke-dasharray: 24;
   animation: check 0.2s ease-out 0.05s both;
+}
+
+@media print {
+  html, body, #root { width: 100%; height: auto; overflow: visible; }
+  .root-bg { zoom: 1 !important; width: 100% !important; height: auto !important; background: #fff !important; }
+  .topbar, .dashboard-layout, canvas { display: none !important; }
+  .root-bg > div { display: block !important; }
+  .root-bg > div > div:last-child { max-height: none !important; overflow: visible !important; border: 0 !important; background: #fff !important; }
+  .root-bg * { color: #111 !important; border-color: #bbb !important; background: #fff !important; }
 }

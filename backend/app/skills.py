@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from functools import lru_cache
 
 from pydantic import BaseModel
 
@@ -15,6 +16,7 @@ class SkillSummary(BaseModel):
     when_to_use: str = ""
     tools: list[str] = []
 
+@lru_cache(maxsize=32)
 def load_skill_catalog(root: Path) -> list[SkillSummary]:
     result: list[SkillSummary] = []
     for skill_file in sorted(root.glob("*/SKILL.md")):

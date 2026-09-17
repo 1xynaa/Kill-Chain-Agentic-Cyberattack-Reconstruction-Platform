@@ -222,7 +222,7 @@ function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:App
   const shortId = investigationId ? investigationId.split('-')[0].toUpperCase() : '—'
 
   return (
-    <header style={{
+    <header className={state === 'empty' ? 'topbar empty' : 'topbar'} style={{
       height:52, flexShrink:0,
       background:PANEL, borderBottom:`1px solid ${EDGE}`,
       display:'flex', alignItems:'center', padding:'0 20px',
@@ -281,7 +281,7 @@ function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:App
       )}
 
       {/* Right */}
-      <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+      <div className="topbar-actions" style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
 
         {/* Search */}
         <div style={{
@@ -572,6 +572,30 @@ function Stepper({ status, sel, onSel }: { status:Record<string,StageStatus>; se
 function Graph({ nodes, edges, sel }: { nodes:GNode[]; edges:GEdge[]; sel:string }) {
   const ref = useRef<HTMLDivElement>(null)
   const [sz, setSz] = useState({ w:0, h:0 })
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
+  const panRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
+
+  const resetView = () => setView({ scale: 1, x: 0, y: 0 })
+  const changeZoom = (amount: number) => setView(current => ({
+    ...current,
+    scale: Math.min(2.5, Math.max(0.55, Number((current.scale + amount).toFixed(2)))),
+  }))
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const direction = event.deltaY < 0 ? 0.1 : -0.1
+    changeZoom(direction)
+  }
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    panRef.current = { x: view.x, y: view.y, startX: event.clientX, startY: event.clientY }
+  }
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = panRef.current
+    if (!start) return
+    setView(current => ({ ...current, x: start.x + event.clientX - start.startX, y: start.y + event.clientY - start.startY }))
+  }
+  const stopPan = () => { panRef.current = null }
 
   useEffect(()=>{
     const obs = new ResizeObserver(e=>{ const r=e[0]?.contentRect; if(r)setSz({w:r.width,h:r.height}) })
@@ -637,9 +661,10 @@ function Graph({ nodes, edges, sel }: { nodes:GNode[]; edges:GEdge[]; sel:string
   }
 
   return (
-    <div ref={ref} style={{ flex:1, minHeight:0, background:PANEL2, position:'relative' }}>
+    <div ref={ref} onWheel={handleWheel} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={stopPan} onPointerCancel={stopPan} style={{ flex:1, minHeight:0, background:PANEL2, position:'relative', cursor:panRef.current ? 'grabbing' : 'grab', touchAction:'none' }}>
       {sz.w > 0 && (
         <svg width={sz.w} height={sz.h} style={{ display:'block', userSelect:'none' }}>
+          <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
           {edges.map((e,i)=>{
             const A=pos[e.from], B=pos[e.to]; if(!A||!B) return null
             const mx=(A.x+B.x)/2, my=(A.y+B.y)/2
@@ -658,8 +683,16 @@ function Graph({ nodes, edges, sel }: { nodes:GNode[]; edges:GEdge[]; sel:string
             )
           })}
           {nodes.map(n => drawNode(n))}
+          </g>
         </svg>
       )}
+      <div style={{ position:'absolute', top:10, right:10, display:'flex', alignItems:'center', gap:4, background:a(PANEL,.95), border:`1px solid ${EDGE}`, borderRadius:4, padding:4, zIndex:2 }}>
+        <button aria-label="Zoom out" title="Zoom out" onClick={()=>changeZoom(-0.1)} style={{ width:28, height:28, border:`1px solid ${EDGE}`, borderRadius:3, background:PANEL2, color:T0, cursor:'pointer', fontSize:18, lineHeight:1 }}>−</button>
+        <span style={{ minWidth:48, textAlign:'center', fontFamily:'JetBrains Mono', fontSize:10, color:T1 }}>{Math.round(view.scale * 100)}%</span>
+        <button aria-label="Zoom in" title="Zoom in" onClick={()=>changeZoom(0.1)} style={{ width:28, height:28, border:`1px solid ${EDGE}`, borderRadius:3, background:PANEL2, color:T0, cursor:'pointer', fontSize:18, lineHeight:1 }}>+</button>
+        <button aria-label="Reset graph view" title="Reset view" onClick={resetView} style={{ padding:'0 8px', height:28, border:`1px solid ${EDGE}`, borderRadius:3, background:PANEL2, color:T1, cursor:'pointer', fontSize:10 }}>Reset</button>
+      </div>
+      <div style={{ position:'absolute', bottom:8, left:8, padding:'4px 8px', color:T2, fontSize:10, background:a(PANEL,.85), border:`1px solid ${EDGE}`, borderRadius:3, pointerEvents:'none' }}>Scroll to zoom · drag to pan</div>
       {/* Legend */}
       <div style={{ position:'absolute', bottom:8, right:8, display:'flex', gap:8,
         background:a(PANEL,.95), border:`1px solid ${EDGE}`, borderRadius:2, padding:'3px 8px' }}>
@@ -821,6 +854,52 @@ function FindCard({ f, investigationId }: { f: Finding; investigationId:string|n
   )
 }
 
+function downloadFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function exportJson(report: any) {
+  downloadFile(
+    `killchain-report-${report.investigation_id}.json`,
+    JSON.stringify(report, null, 2),
+    'application/json',
+  )
+}
+
+function exportStix(report: any) {
+  const now = new Date().toISOString()
+  const objects = report.iocs.map((ioc: { type: string; value: string }, index: number) => {
+    const objectType = ioc.type === 'ip' ? 'ipv4-addr' : ioc.type === 'domain' ? 'domain-name' : 'artifact'
+    return {
+      type: objectType,
+      spec_version: '2.1',
+      id: `${objectType}--${crypto.randomUUID()}`,
+      created: now,
+      modified: now,
+      ...(ioc.type === 'sha256' ? { hashes: { SHA256: ioc.value } } : { value: ioc.value }),
+      labels: ['killchain', 'investigation-ioc'],
+      x_killchain_index: index,
+    }
+  })
+  downloadFile(
+    `killchain-report-${report.investigation_id}.stix.json`,
+    JSON.stringify({ type: 'bundle', id: `bundle--${crypto.randomUUID()}`, spec_version: '2.1', objects }, null, 2),
+    'application/stix+json',
+  )
+}
+
+function exportPdf() {
+  window.print()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom drawer — real report from backend
 // ─────────────────────────────────────────────────────────────────────────────
@@ -863,7 +942,7 @@ function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report
             <h3 style={{ fontSize:13, fontWeight:600, color:T0, margin:'0 0 10px', lineHeight:1.4 }}>
               Investigation Report
             </h3>
-            <p style={{ fontSize:12, color:T1, lineHeight:1.75, margin:'0 0 12px' }}>
+            <p style={{ fontSize:12, color:T1, lineHeight:1.75, margin:'0 0 12px', whiteSpace:'pre-line' }}>
               {report.narrative}
             </p>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
@@ -879,14 +958,15 @@ function Drawer({ state, report, toolCalls, elapsed }: { state: AppState; report
 
           {/* Actions */}
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {[{l:'Export PDF',c:T0},{l:'Export JSON',c:T0},{l:'Export STIX 2.1',c:T0}].map(btn=>(
+            {[{l:'Export PDF',c:T0, onClick:exportPdf},{l:'Export JSON',c:T0, onClick:()=>exportJson(report)},{l:'Export STIX 2.1',c:T0, onClick:()=>exportStix(report)}].map(btn=>(
               <button key={btn.l} style={{
                 padding:'9px 14px', textAlign:'left',
                 background:PANEL2, border:`1px solid ${EDGE}`, borderRadius:3,
                 fontSize:11, color:btn.c, cursor:'pointer', transition:'border-color .15s',
               }}
               onMouseEnter={e=>{ e.currentTarget.style.borderColor=EDGE2; e.currentTarget.style.color=T0 }}
-              onMouseLeave={e=>{ e.currentTarget.style.borderColor=EDGE; e.currentTarget.style.color=btn.c }}>
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=EDGE; e.currentTarget.style.color=btn.c }}
+              onClick={btn.onClick}>
                 {btn.l}
               </button>
             ))}
@@ -1153,11 +1233,11 @@ export default function App() {
         {(inv.appState === 'empty')
           ? <EmptyState onUpload={handleUpload}/>
           : <>
-              <div style={{ flex:1, minHeight:0, display:'flex' }}>
-                <div style={{ width:'30%', flexShrink:0, borderRight:`1px solid ${EDGE}`, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+              <div className="dashboard-layout" style={{ flex:1, minHeight:0, display:'flex' }}>
+                <div className="dashboard-column dashboard-column-left" style={{ width:'30%', flexShrink:0, borderRight:`1px solid ${EDGE}`, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                   <ReasoningFeed steps={inv.steps} thinking={inv.thinking}/>
                 </div>
-                <div style={{ flex:1, minWidth:0, borderRight:`1px solid ${EDGE}`, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                <div className="dashboard-column dashboard-column-center" style={{ flex:1, minWidth:0, borderRight:`1px solid ${EDGE}`, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                   <CenterPanel
                     state={dashState}
                     status={inv.stages}
@@ -1167,7 +1247,7 @@ export default function App() {
                     iocs={inv.iocs}
                   />
                 </div>
-                <div style={{ width:'30%', flexShrink:0, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+                <div className="dashboard-column dashboard-column-right" style={{ width:'30%', flexShrink:0, overflow:'hidden', display:'flex', flexDirection:'column' }}>
                   <RightPanel finds={inv.findings} iocs={inv.iocs} investigationId={inv.investigationId}/>
                 </div>
               </div>

@@ -110,7 +110,7 @@ class Agent:
         prior_memories: list[MemoryRecord] | None = None,
     ) -> dict[str, Any]:
         provider = OpenAICompatibleProvider(self.config)
-        system_prompt = "You are a forensic analyst. Return JSON only: thought, tool, done. Choose only from the supplied tools and never invent evidence."
+        system_prompt = "You are a forensic analyst. Return JSON only with keys thought, tool, done. Choose only from the supplied tools and never invent evidence. Make thought a specific 2-4 sentence analyst rationale: explain what the last observation means, why the selected tool is the best next step, and what evidence would confirm or weaken the hypothesis. Separate observed facts from hypotheses."
         if prior_memories:
             memory_text = "\n\n".join(f"Prior analyst feedback ({memory.kind}, confidence {memory.confidence:.2f}): {memory.content}" for memory in prior_memories[:5])
             system_prompt += f"\n\nPrior analyst feedback is context, not proof:\n{memory_text}"

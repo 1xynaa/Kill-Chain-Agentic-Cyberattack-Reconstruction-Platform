@@ -55,7 +55,7 @@ def tools() -> list[dict[str, object]]:
 
 
 @app.get("/skills")
-def skills() -> list[dict[str, str]]:
+def skills() -> list[dict[str, object]]:
     return [item.model_dump() for item in load_skill_catalog(skills_root)]
 
 

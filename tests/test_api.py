@@ -23,6 +23,15 @@ def test_health_and_tool_catalog():
         assert any(item["name"] == "file_triage" for item in tools)
 
 
+def test_skill_catalog_endpoint_returns_structured_tools():
+    with TestClient(main.app) as client:
+        response = client.get("/skills")
+        assert response.status_code == 200
+        skills = response.json()
+        assert skills
+        assert isinstance(skills[0]["tools"], list)
+
+
 def test_upload_and_report_round_trip():
     with TestClient(main.app) as client:
         response = client.post("/upload", files={"files": ("auth.log", b"failed SSH login from 10.0.0.1", "text/plain")})
