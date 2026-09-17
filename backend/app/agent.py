@@ -8,7 +8,7 @@ from typing import Any
 
 from .config import Settings
 from .ioc import extract_iocs
-from .killchain import classify
+from .killchain import classify, STAGE_ORDER
 from .models import Finding, Investigation, InvestigationEvent, ModelConfig, Stage
 from .providers import OpenAICompatibleProvider, ProviderError
 from .skills import SkillSummary, load_skill_catalog
@@ -54,13 +54,13 @@ class Agent:
             selected = self._select_skills(catalog, evidence.stored_name + " " + (evidence.file_type or ""))
             if selected:
                 await emit("skill_select", {"skills": [skill.name for skill in selected[:8]]}, refs)
-            queue = self._initial_plan(evidence.stored_name, evidence.file_type or "")
+            queue = self._initial_plan(evidence.stored_name, evidence.file_type or "", selected)
             while queue and calls < self.settings.max_tool_calls:
                 tool = queue.pop(0)
                 thought = f"Inspect {evidence.stored_name} with {tool}; correlate its output with prior evidence."
                 if self.config.provider != "rule_based":
                     try:
-                        decision = await self._model_decision(investigation, evidence.stored_name, tool)
+                        decision = await self._model_decision(investigation, evidence.stored_name, tool, selected)
                         thought = decision.get("thought", thought)
                         tool = decision.get("tool", tool)
                         if decision.get("done"):
@@ -75,18 +75,33 @@ class Agent:
                 text = result.stdout or result.stderr or result.error or ""
                 stage, confidence = classify(text, evidence.original_name)
                 if text and stage:
-                    iocs = [item["value"] for item in extract_iocs(text)]
-                    finding = Finding(title=f"{tool} finding", description=text[:2000], source_file=evidence.stored_name, stage=stage, confidence=confidence, iocs=iocs)
+                    iocs = [item["value"] for item in extract_iocs([text])]
+                    
+                    highest_idx = -1
+                    for s in STAGE_ORDER:
+                        if s in investigation.stages:
+                            highest_idx = STAGE_ORDER.index(s)
+                            
+                    current_idx = STAGE_ORDER.index(stage)
+                    is_tentative = current_idx > highest_idx + 1
+                    
+                    finding = Finding(title=f"{tool} finding", description=text[:2000], source_file=evidence.stored_name, stage=stage, confidence=confidence, iocs=iocs, tentative=is_tentative)
                     investigation.findings.append(finding)
-                    investigation.stages[stage] = max(confidence, investigation.stages.get(stage, 0))
+                    if not is_tentative:
+                        investigation.stages[stage] = max(confidence, investigation.stages.get(stage, 0))
                     await emit("finding", finding.model_dump(mode="json"), refs, confidence)
-                    await emit("stage_update", {"stage": stage.value, "confidence": confidence}, refs, confidence)
+                    await emit("stage_update", {"stage": stage.value, "confidence": confidence, "tentative": is_tentative}, refs, confidence)
         investigation.status = "completed"
         await emit("status", {"status": "completed", "tool_calls": calls, "findings": len(investigation.findings)})
 
-    async def _model_decision(self, investigation: Investigation, filename: str, suggested: str) -> dict[str, Any]:
+    async def _model_decision(self, investigation: Investigation, filename: str, suggested: str, skills: list[SkillSummary] = None) -> dict[str, Any]:
         provider = OpenAICompatibleProvider(self.config)
-        messages = [{"role": "system", "content": "You are a forensic analyst. Return JSON only: thought, tool, done. Choose only from the supplied tools and never invent evidence."}, {"role": "user", "content": json.dumps({"file": filename, "suggested_tool": suggested, "findings": [item.model_dump(mode="json") for item in investigation.findings[-10:]]})}]
+        system_prompt = "You are a forensic analyst. Return JSON only: thought, tool, done. Choose only from the supplied tools and never invent evidence."
+        if skills:
+            skill_text = "\n\n".join(f"Skill: {s.name}\nOverview: {s.overview}" for s in skills[:3] if s.overview)
+            if skill_text:
+                system_prompt += f"\n\nRelevant Skills:\n{skill_text}"
+        messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": json.dumps({"file": filename, "suggested_tool": suggested, "findings": [item.model_dump(mode="json") for item in investigation.findings[-10:]]})}]
         response = await asyncio.to_thread(provider.complete, messages, self.runner.schemas())
         try:
             value = json.loads(response.content)
@@ -96,14 +111,24 @@ class Agent:
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise ProviderError("model response must be a JSON decision object") from exc
 
-    @staticmethod
-    def _initial_plan(name: str, file_type: str) -> list[str]:
+    def _initial_plan(self, name: str, file_type: str, selected_skills: list[SkillSummary] = None) -> list[str]:
         lower = name.lower() + " " + file_type.lower()
         if name.lower().endswith((".pcap", ".pcapng")) or "pcap" in lower:
-            return ["tshark_summary", "strings_extract", "sha256sum"]
-        if "memory" in lower or name.lower().endswith((".raw", ".dmp", ".mem")):
-            return ["strings_extract", "volatility_info", "sha256sum"]
-        return ["grep_indicators", "strings_extract", "sha256sum"]
+            queue = ["tshark_summary", "strings_extract", "sha256sum"]
+        elif "memory" in lower or name.lower().endswith((".raw", ".dmp", ".mem")):
+            queue = ["strings_extract", "volatility_info", "sha256sum"]
+        else:
+            queue = ["grep_indicators", "strings_extract", "sha256sum"]
+            
+        if selected_skills:
+            available_tools = {s["function"]["name"] for s in self.runner.schemas()}
+            skill_tools = []
+            for skill in selected_skills:
+                for t in skill.tools:
+                    if t in available_tools and t not in skill_tools and t not in queue:
+                        skill_tools.append(t)
+            queue.extend(skill_tools)
+        return queue
 
     @staticmethod
     def _select_skills(catalog: list[SkillSummary], text: str) -> list[SkillSummary]:

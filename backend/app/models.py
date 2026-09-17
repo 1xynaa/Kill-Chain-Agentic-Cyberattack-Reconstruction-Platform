@@ -59,6 +59,7 @@ class Finding(BaseModel):
     source_file: str | None = None
     stage: Stage | None = None
     confidence: float = Field(ge=0, le=1)
+    tentative: bool = False
     timestamp: datetime | None = None
     iocs: list[str] = Field(default_factory=list)
 

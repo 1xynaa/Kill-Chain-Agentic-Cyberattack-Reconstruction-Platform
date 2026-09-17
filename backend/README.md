@@ -23,7 +23,7 @@ The default configuration is intentionally conservative:
 - `POST /upload` — multipart upload of one or more evidence files
 - `POST /investigate/start/{id}` — start the bounded investigation loop
 - `GET /investigation/{id}` — current state and append-only events
-- `WS /ws/investigate/{id}` — live event stream for the dashboard
+- `WS /ws/investigate/{id}` — live event stream for the dashboard. The `stage_update` event payload includes `{stage: str, confidence: float, tentative: bool}` so the frontend can handle out-of-sequence stage discoveries correctly.
 - `GET /report/{id}` — JSON timeline, stages, narrative, and IOCs
 - `GET /tools` — available allowlisted tools on this host
 - `GET /skills` — indexed project skill catalog

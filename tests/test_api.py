@@ -49,7 +49,7 @@ def test_start_investigation_emits_completion():
         assert item["status"] == "completed"
         assert any(event["type"] == "observation" for event in item["events"])
         assert item["findings"]
-        assert item["findings"][0]["stage"] == "Exploitation"
+        assert any(f["stage"] == "Exploitation" for f in item["findings"])
 
 
 def test_websocket_replays_existing_events():
@@ -82,3 +82,35 @@ def test_unknown_provider_requires_base_url():
     with TestClient(main.app) as client:
         response = client.post("/config/model", json={"provider": "custom", "model": "test", "api_key": "secret-value"})
         assert response.status_code == 400
+
+
+def test_replay_investigation():
+    with TestClient(main.app) as client:
+        response = client.post("/upload", files={"files": ("auth.log", b"failed SSH login from 10.0.0.1", "text/plain")})
+        investigation_id = response.json()["id"]
+        client.post(f"/investigate/start/{investigation_id}")
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            state = client.get(f"/investigation/{investigation_id}").json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.01)
+            
+        assert state["status"] == "completed"
+        num_events = len(state["events"])
+        
+        with client.websocket_connect(f"/ws/investigate/{investigation_id}") as websocket:
+            for _ in range(num_events):
+                websocket.receive_json()
+                
+            replay_res = client.post(f"/replay/{investigation_id}?speed=100.0")
+            assert replay_res.status_code == 200
+            
+            replayed_events = []
+            for _ in range(num_events):
+                replayed_events.append(websocket.receive_json())
+                
+            assert len(replayed_events) == num_events
+            for original, replayed in zip(state["events"], replayed_events):
+                assert original["sequence"] == replayed["sequence"]
+                assert original["type"] == replayed["type"]

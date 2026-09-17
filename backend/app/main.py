@@ -72,6 +72,26 @@ async def start(investigation_id: UUID) -> StartResponse:
     return StartResponse(investigation_id=investigation.id, status="started")
 
 
+@app.post("/replay/{investigation_id}")
+async def replay(investigation_id: UUID, speed: float = 1.0) -> dict[str, str]:
+    try:
+        investigation = store.get(investigation_id)
+    except KeyError as exc:
+        raise HTTPException(404, "investigation not found") from exc
+    if investigation.status == "running":
+        raise HTTPException(409, "investigation already running")
+        
+    async def _do_replay(inv: Investigation, playback_speed: float):
+        interval = 0.4 / playback_speed
+        for event in inv.events:
+            for queue in list(subscribers.get(inv.id, [])):
+                await queue.put(event.model_dump(mode="json"))
+            await asyncio.sleep(interval)
+            
+    asyncio.create_task(_do_replay(investigation, speed))
+    return {"status": "replaying"}
+
+
 async def _run(investigation: Investigation) -> None:
     investigator = Agent(settings, runner, skills_root, model_config)
 

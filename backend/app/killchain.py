@@ -12,6 +12,16 @@ _RULES: list[tuple[tuple[str, ...], Stage, float]] = [
     (("exfil", "ransom", "encrypt", "impact", "objective"), Stage.ACTIONS, 0.85),
 ]
 
+STAGE_ORDER = [
+    Stage.RECONNAISSANCE,
+    Stage.WEAPONIZATION,
+    Stage.DELIVERY,
+    Stage.EXPLOITATION,
+    Stage.INSTALLATION,
+    Stage.C2,
+    Stage.ACTIONS
+]
+
 
 def classify(title: str, description: str) -> tuple[Stage | None, float]:
     text = f"{title} {description}".lower()
