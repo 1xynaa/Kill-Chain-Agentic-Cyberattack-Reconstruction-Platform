@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -47,3 +48,22 @@ PROVIDER_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
     "xai": "https://api.x.ai/v1",
 }
+
+
+def model_config_from_environment() -> ModelConfig:
+    provider = os.getenv("KILLCHAIN_MODEL_PROVIDER")
+    api_keys = {
+        "groq": os.getenv("GROQ_API_KEY"),
+        "openrouter": os.getenv("OPENROUTER_API_KEY"),
+        "openai": os.getenv("OPENAI_API_KEY"),
+    }
+    api_key = api_keys.get(provider) if provider else None
+    if not provider:
+        provider = next((name for name, value in api_keys.items() if value), "rule_based")
+        api_key = api_keys.get(provider)
+    return ModelConfig(
+        provider=provider,
+        model=os.getenv("KILLCHAIN_MODEL", "llama-3.3-70b-versatile" if provider == "groq" else "deterministic"),
+        base_url=os.getenv("KILLCHAIN_MODEL_BASE_URL") or PROVIDER_BASE_URLS.get(provider),
+        api_key=api_key,
+    )

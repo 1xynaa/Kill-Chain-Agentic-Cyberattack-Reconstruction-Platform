@@ -39,6 +39,11 @@ Environment variables:
 - `KILLCHAIN_TOOL_TIMEOUT`
 - `KILLCHAIN_MAX_TOOL_CALLS`
 - `KILLCHAIN_ALLOW_NETWORK_TOOLS`
+- `GROQ_API_KEY` (when using Groq)
+- `OPENROUTER_API_KEY` (when using OpenRouter)
+- `KILLCHAIN_MODEL_PROVIDER` (for example, `openrouter`)
+- `KILLCHAIN_MODEL` (recommended free model: `nex-agi/nex-n2.5-pro:free`)
+- `KILLCHAIN_MODEL_BASE_URL` (optional; defaults to the selected provider URL)
 
 The provider layer currently accepts OpenAI-compatible providers including OpenRouter, OpenAI, Groq, DeepSeek, and xAI, plus arbitrary compatible base URLs. The deterministic rule-based path remains available when no model is configured, which keeps demos and tests reproducible.
 

@@ -64,6 +64,18 @@ class Finding(BaseModel):
     iocs: list[str] = Field(default_factory=list)
 
 
+class MemoryRecord(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    kind: str
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    source_investigation_id: UUID | None = None
+    source_finding_id: UUID | None = None
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class ModelConfig(BaseModel):
     provider: str = "rule_based"
     model: str = "deterministic"

@@ -9,7 +9,7 @@ from typing import Any
 from .config import Settings
 from .ioc import extract_iocs
 from .killchain import classify, STAGE_ORDER
-from .models import Finding, Investigation, InvestigationEvent, ModelConfig, Stage
+from .models import Finding, Investigation, InvestigationEvent, MemoryRecord, ModelConfig, Stage
 from .providers import OpenAICompatibleProvider, ProviderError
 from .skills import SkillSummary, load_skill_catalog
 from .tools import ToolRunner
@@ -24,7 +24,7 @@ class Agent:
         self.settings, self.runner, self.skills_root = settings, runner, skills_root
         self.config = config or ModelConfig()
 
-    async def investigate(self, investigation: Investigation, sink: EventSink) -> None:
+    async def investigate(self, investigation: Investigation, sink: EventSink, prior_memories: list[MemoryRecord] | None = None) -> None:
         investigation.status = "running"
         sequence = len(investigation.events)
         calls = 0
@@ -38,6 +38,8 @@ class Agent:
             await sink(event)
 
         await emit("status", {"status": "running", "planner": self.config.provider, "skill_count": len(catalog)})
+        if prior_memories:
+            await emit("memory_recall", {"count": len(prior_memories), "memories": [item.model_dump(mode="json") for item in prior_memories[:5]]})
         for evidence in investigation.files:
             if calls >= self.settings.max_tool_calls:
                 await emit("status", {"status": "budget_exhausted", "tool_calls": calls})
@@ -60,7 +62,7 @@ class Agent:
                 thought = f"Inspect {evidence.stored_name} with {tool}; correlate its output with prior evidence."
                 if self.config.provider != "rule_based":
                     try:
-                        decision = await self._model_decision(investigation, evidence.stored_name, tool, selected)
+                        decision = await self._model_decision(investigation, evidence.stored_name, tool, selected, prior_memories)
                         thought = decision.get("thought", thought)
                         tool = decision.get("tool", tool)
                         if decision.get("done"):
@@ -94,9 +96,19 @@ class Agent:
         investigation.status = "completed"
         await emit("status", {"status": "completed", "tool_calls": calls, "findings": len(investigation.findings)})
 
-    async def _model_decision(self, investigation: Investigation, filename: str, suggested: str, skills: list[SkillSummary] = None) -> dict[str, Any]:
+    async def _model_decision(
+        self,
+        investigation: Investigation,
+        filename: str,
+        suggested: str,
+        skills: list[SkillSummary] = None,
+        prior_memories: list[MemoryRecord] | None = None,
+    ) -> dict[str, Any]:
         provider = OpenAICompatibleProvider(self.config)
         system_prompt = "You are a forensic analyst. Return JSON only: thought, tool, done. Choose only from the supplied tools and never invent evidence."
+        if prior_memories:
+            memory_text = "\n\n".join(f"Prior analyst feedback ({memory.kind}, confidence {memory.confidence:.2f}): {memory.content}" for memory in prior_memories[:5])
+            system_prompt += f"\n\nPrior analyst feedback is context, not proof:\n{memory_text}"
         if skills:
             skill_text = "\n\n".join(f"Skill: {s.name}\nOverview: {s.overview}" for s in skills[:3] if s.overview)
             if skill_text:
