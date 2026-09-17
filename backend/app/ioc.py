@@ -13,7 +13,7 @@ REGISTRY_KEY = re.compile(r"\b(?:HKLM|HKCU|HKCR|HKU|HKEY_LOCAL_MACHINE|HKEY_CURR
 PROCESS = re.compile(r"\b[a-zA-Z0-9_-]+\.exe\b", re.IGNORECASE)
 DLL = re.compile(r"\b[a-zA-Z0-9_-]+\.(?:dll|sys)\b", re.IGNORECASE)
 SERVICE = re.compile(r"(?:service(?: name)?|svc)\s*[:=]\s*['\"]?([A-Za-z0-9_. -]{2,64})", re.IGNORECASE)
-USERNAME = re.compile(r"\b(?:user|account|subjectuser(?:name)?|username)\s*[:=]\s*['\"]?([A-Za-z0-9._-]+(?:\\[A-Za-z0-9._-]+)?)", re.IGNORECASE)
+USERNAME = re.compile(r"\b(?:user|account|accountname|subjectuser(?:name)?|username)\s*[:=]\s*['\"]?([A-Za-z0-9._-]+(?:\\[A-Za-z0-9._-]+)?)", re.IGNORECASE)
 PLUGIN = re.compile(r"\b(?:windows|linux)\.[a-z0-9_-]+\.[A-Z][A-Za-z0-9_]*\b")
 PACKET_FIELDS = ("dns.", "http.", "ip.", "tcp.", "udp.", "frame.")
 KNOWN_TLDS = {"com", "org", "net", "edu", "gov", "mil", "io", "co", "uk", "de", "fr", "ru", "cn", "jp", "in", "au", "ca", "us", "info", "biz", "me", "tv", "xyz", "online", "site", "dev", "app", "tech", "cloud", "example"}

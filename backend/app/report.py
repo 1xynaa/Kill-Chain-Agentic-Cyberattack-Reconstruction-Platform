@@ -87,6 +87,23 @@ def _correlate_lateral_findings(findings: list[Finding]) -> list[Finding]:
     return [item for item in findings if item.stage != Stage.LATERAL_MOVEMENT or str(item.id) not in consumed]
 
 
+def _indicator_text(investigation: Investigation) -> str:
+    return " ".join(
+        f"{finding.description} {' '.join(finding.iocs)}"
+        for finding in investigation.findings
+    ).lower()
+
+
+def _indicator_gap(stage: Stage, indicators: str) -> str | None:
+    if stage is Stage.ACTIONS and any(term in indicators for term in (".locked", "readme_to_decrypt", "readme to decrypt", "ransom note")):
+        return "Actions on Objectives / Impact: impact indicators are present (.locked/ransom-note artifacts), but insufficient corroboration prevented a confirmed stage."
+    if stage is Stage.LATERAL_MOVEMENT and ("445" in indicators or "smb" in indicators) and any(term in indicators for term in ("source=", "src=", "destination=", "dest=")):
+        return "Lateral Movement: host-pair/SMB indicators are present, but fewer than two independently corroborating artifacts were available."
+    if stage is Stage.CREDENTIAL_ACCESS and "lsass" in indicators:
+        return "Credential Access: LSASS is mentioned, but no explicit handle-open/access event was confirmed."
+    return None
+
+
 def build_report(investigation: Investigation) -> ReportResponse:
     investigation.findings = _correlate_lateral_findings(investigation.findings)
     values = [f"{f.title} {f.description} {' '.join(f.iocs)}" for f in investigation.findings]
@@ -98,12 +115,13 @@ def build_report(investigation: Investigation) -> ReportResponse:
     recon_note = "Reconnaissance: no evidence." if Stage.RECONNAISSANCE not in scores else ""
     missing_note = f" Unconfirmed stages: {', '.join(missing)}." if missing else ""
     gap_notes = []
+    indicators = _indicator_text(investigation)
     if Stage.CREDENTIAL_ACCESS not in scores:
-        gap_notes.append("Credential Access: no evidence of an LSASS handle or credential-dumping signature.")
+        gap_notes.append(_indicator_gap(Stage.CREDENTIAL_ACCESS, indicators) or "Credential Access: no evidence of an LSASS handle or credential-dumping signature.")
     if Stage.LATERAL_MOVEMENT not in scores:
-        gap_notes.append("Lateral Movement: no evidence; source host, destination host, and account used could not be established.")
+        gap_notes.append(_indicator_gap(Stage.LATERAL_MOVEMENT, indicators) or "Lateral Movement: no evidence; source host, destination host, and account used could not be established.")
     if Stage.ACTIONS not in scores:
-        gap_notes.append("Actions on Objectives / Impact: no evidence of encryption, exfiltration, or destructive action.")
+        gap_notes.append(_indicator_gap(Stage.ACTIONS, indicators) or "Actions on Objectives / Impact: no evidence of encryption, exfiltration, or destructive action.")
     narrative = (
         f"INVESTIGATION REPORT — {investigation.id}\n\n"
         f"EXECUTIVE SUMMARY\n"

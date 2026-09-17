@@ -142,6 +142,8 @@ class Agent:
             queue = ["tshark_summary", "tshark_details", "strings_extract", "sha256sum"]
         elif "memory" in lower or name.lower().endswith((".raw", ".dmp", ".mem")):
             queue = ["strings_extract", "volatility_info", "sha256sum"]
+        elif name.lower().endswith(".csv"):
+            queue = ["csv_events", "grep_indicators", "strings_extract", "sha256sum"]
         else:
             queue = ["grep_indicators", "strings_extract", "sha256sum"]
             
@@ -203,6 +205,9 @@ class Agent:
         if result.tool.startswith("tshark"):
             lines = [line for line in text.splitlines() if line.strip()]
             payload["records_analyzed"] = max(0, len(lines) - (1 if result.tool == "tshark_details" and lines else 0))
+        elif result.tool == "csv_events":
+            payload["records_analyzed"] = len([line for line in text.splitlines() if line.startswith("CSV_RECORD|")])
+            payload["parse_note"] = next((line.split("|", 1)[1] for line in text.splitlines() if line.startswith("CSV_PARSE_NOTE|")), None)
         elif result.tool not in {"sha256sum", "file_triage"}:
             payload["records_analyzed"] = len([line for line in text.splitlines() if line.strip()])
         return payload

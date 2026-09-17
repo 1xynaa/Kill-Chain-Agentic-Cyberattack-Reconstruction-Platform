@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -58,6 +60,7 @@ class ToolRunner:
             "binwalk_scan": ToolSpec("binwalk_scan", "binwalk", "Inspect embedded firmware content", lambda p: ["--run-as=root", str(p)]),
             "exiftool_metadata": ToolSpec("exiftool_metadata", "exiftool", "Extract metadata", lambda p: [str(p)]),
             "grep_indicators": ToolSpec("grep_indicators", "grep", "Search evidence text for indicators", lambda p: ["-Ein", "(failed|accepted|ssh|sudo|exec|http|dns|beacon)", str(p)]),
+            "csv_events": ToolSpec("csv_events", "python3", "Parse CSV event records and normalize security fields", lambda p: [str(p)]),
             "nmap": ToolSpec("nmap", "nmap", "Optional active network inventory", lambda p: ["-sV", "-Pn", "--", str(p)], network=True),
             "dig": ToolSpec("dig", "dig", "Optional DNS lookup", lambda p: ["+noall", "+answer", str(p)], network=True),
             "whois": ToolSpec("whois", "whois", "Optional registration lookup", lambda p: [str(p)], network=True),
@@ -81,6 +84,8 @@ class ToolRunner:
         target = (workspace / relative_path).resolve()
         if workspace.resolve() not in target.parents or not target.is_file():
             return ToolResult(name, False, True, None, "", "", "evidence path is outside workspace")
+        if name == "csv_events":
+            return self._parse_csv_events(target)
         try:
             completed = subprocess.run([executable, *spec.args(target)], cwd=workspace, capture_output=True, text=True, timeout=self.settings.tool_timeout, shell=False)
             return ToolResult(name, completed.returncode == 0, True, completed.returncode, completed.stdout[: self.settings.max_tool_output], completed.stderr[: self.settings.max_tool_output])
@@ -88,6 +93,28 @@ class ToolRunner:
             return ToolResult(name, False, True, None, (exc.stdout or "")[: self.settings.max_tool_output], (exc.stderr or "")[: self.settings.max_tool_output], "tool timeout")
         except OSError as exc:
             return ToolResult(name, False, True, None, "", "", str(exc))
+
+    @staticmethod
+    def _parse_csv_events(path: Path) -> ToolResult:
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="strict")
+            if not text.strip():
+                return ToolResult("csv_events", True, True, 0, "CSV_PARSE_NOTE|file is empty", "")
+            reader = csv.DictReader(io.StringIO(text))
+            headers = {str(item).strip().lower().replace(" ", "_") for item in (reader.fieldnames or [])}
+            known = {"eventid", "event_id", "timecreated", "timestamp", "source", "source_ip", "destination", "destination_ip", "accountname", "account", "servicename", "service", "path", "filepath", "file_path"}
+            if not headers or not headers & known:
+                return ToolResult("csv_events", False, True, 0, "", "CSV_PARSE_NOTE|file parsed but contained no events matching known schemas")
+            rows = []
+            for row in reader:
+                values = {str(key).strip(): str(value).strip() for key, value in row.items() if key and value not in (None, "")}
+                if values:
+                    rows.append("CSV_RECORD|" + "|".join(f"{key}={value}" for key, value in values.items()))
+            if not rows:
+                return ToolResult("csv_events", True, True, 0, "CSV_PARSE_NOTE|file parsed but contained no events matching known schemas", "")
+            return ToolResult("csv_events", True, True, 0, "\n".join(rows), "")
+        except (UnicodeDecodeError, csv.Error, OSError) as exc:
+            return ToolResult("csv_events", False, True, None, "", "", f"CSV_PARSE_NOTE|file could not be parsed: {exc}")
 
 
 def sha256(path: Path) -> str:

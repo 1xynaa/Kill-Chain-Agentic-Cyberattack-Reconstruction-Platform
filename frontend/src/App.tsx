@@ -422,13 +422,15 @@ function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:App
 function ReasoningFeed({ steps, thinking }: { steps:AgentStep[]; thinking:boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const prev = useRef(0)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   useEffect(()=>{
     if (steps.length !== prev.current) {
       prev.current = steps.length
+      setExpandedId(steps.at(-1)?.id ?? null)
       requestAnimationFrame(()=>{ if (ref.current) ref.current.scrollTop = ref.current.scrollHeight })
     }
-  },[steps.length])
+  },[steps])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:PANEL }}>
@@ -439,7 +441,7 @@ function ReasoningFeed({ steps, thinking }: { steps:AgentStep[]; thinking:boolea
 
       <div ref={ref} className="reasoning-feed-scroll" aria-label="Agent reasoning steps" tabIndex={0} style={{ flex:1, minHeight:0, overflowY:'auto', padding:'8px 10px', display:'flex', flexDirection:'column', gap:3 }}>
         {steps.map((step, i) => (
-          <StepCard key={step.id} step={step} isNew={i===steps.length-1 && steps.length>1}/>
+          <StepCard key={step.id} step={step} isNew={i===steps.length-1 && steps.length>1} open={expandedId === step.id} onToggle={()=>setExpandedId(current=>current===step.id ? null : step.id)}/>
         ))}
         {thinking && (
           <div style={{ padding:'8px 12px', display:'flex', alignItems:'center', gap:6 }}>
@@ -454,9 +456,7 @@ function ReasoningFeed({ steps, thinking }: { steps:AgentStep[]; thinking:boolea
   )
 }
 
-function StepCard({ step, isNew }: { step:AgentStep; isNew:boolean }) {
-  const [open, setOpen] = useState(isNew)
-
+function StepCard({ step, isNew, open, onToggle }: { step:AgentStep; isNew:boolean; open:boolean; onToggle:()=>void }) {
   const toolColors: Record<string,string> = {
     network:CYAN, file:AMBER, hash:GREEN, process:RED, intel:AMBER,
     file_triage:AMBER, grep_indicators:CYAN, strings_extract:AMBER,
@@ -475,7 +475,7 @@ function StepCard({ step, isNew }: { step:AgentStep; isNew:boolean }) {
       }}>
       {/* Header — always visible */}
       <button
-        onClick={()=>setOpen(o=>!o)}
+        onClick={onToggle}
         style={{
           width:'100%', display:'flex', alignItems:'flex-start', gap:8,
           padding:'8px 10px', background:'transparent', border:'none', cursor:'pointer',

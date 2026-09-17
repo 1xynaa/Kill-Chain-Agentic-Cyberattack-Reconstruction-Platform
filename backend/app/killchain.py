@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .models import Finding, Stage
 
 # These rules are deliberately specific. A generic word such as "dns", "ssh", or
@@ -25,6 +27,17 @@ STAGE_ORDER = [
 
 def classify(title: str, description: str) -> tuple[Stage | None, float]:
     text = f"{title} {description}".lower()
+    if any(term in text for term in (".locked", "readme_to_decrypt", "readme to decrypt", "ransom note", "ransomware impact")):
+        return Stage.ACTIONS, 0.93
+    # Installation evidence can mention a process or adjacent LSASS text
+    # without being a credential-access event. Reserve Credential Access for
+    # the explicit LSASS handle-open/access observation.
+    if any(term in text for term in ("written to disk", "payload written", "dropped payload", "registry run", "run key", "service installed", "persistence established")):
+        return Stage.INSTALLATION, 0.88
+    if "lsass" in text and any(term in text for term in ("handle", "opened", "open", "access")):
+        return Stage.CREDENTIAL_ACCESS, 0.91
+    if ("smb" in text or "445" in text) and re.search(r"(?:source|src)[=: ]+\S+.*(?:destination|dest|dst)[=: ]+\S+", text):
+        return Stage.LATERAL_MOVEMENT, 0.88
     for terms, stage, confidence in _RULES:
         if any(term in text for term in terms):
             return stage, confidence

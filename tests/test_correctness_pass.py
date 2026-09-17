@@ -81,3 +81,35 @@ def test_lateral_movement_sources_are_merged_when_hosts_and_time_correlate():
     assert "traffic.pcap" in lateral[0].description and "security.csv" in lateral[0].description and "system.csv" in lateral[0].description
     assert "CORP\\alice" in lateral[0].description
     assert lateral[0].confidence >= .93
+
+
+def test_indicator_driven_impact_and_installation_mapping_do_not_contradict():
+    assert classify("ransomware artifact", r"C:\\Users\\Public\\invoice.docx.locked README_TO_DECRYPT.txt")[0] == Stage.ACTIONS
+    assert classify("process spawn and file drop", r"Updater.exe written to disk; HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater")[0] == Stage.INSTALLATION
+    assert classify("LSASS handle open", "process opened a handle to lsass.exe")[0] == Stage.CREDENTIAL_ACCESS
+
+
+def test_csv_security_event_output_is_substantive_and_correlates_lateral_movement(tmp_path):
+    from backend.app.agent import Agent
+    from backend.app.config import Settings
+    from backend.app.tools import ToolRunner
+    import asyncio
+
+    inv = Investigation(files=[EvidenceFile(original_name="windows_security_events.csv", stored_name="windows_security_events.csv", size=1, sha256="a" * 64)])
+    workspace = tmp_path / str(inv.id)
+    workspace.mkdir()
+    (workspace / "windows_security_events.csv").write_text(
+        "TimeCreated,EventID,Source,Destination,AccountName,ServiceName,Path\n"
+        "2026-01-01T11:03:55Z,4624,10.10.10.42,10.10.10.15,CORP\\alice,,\n"
+        "2026-01-01T11:03:56Z,7045,10.10.10.42,10.10.10.15,CORP\\alice,Updater,C:\\Windows\\Temp\\updater.exe\n"
+    )
+    events = []
+
+    async def sink(event):
+        events.append(event)
+
+    settings = Settings(workspace_root=tmp_path, max_tool_calls=5)
+    asyncio.run(Agent(settings, ToolRunner(settings), Path("skills")).investigate(inv, sink))
+    observations = [e for e in events if e.type == "observation" and e.payload.get("records_analyzed")]
+    assert observations and observations[0].payload["records_analyzed"] == 2
+    assert any("CORP\\alice" in finding.description for finding in inv.findings)
