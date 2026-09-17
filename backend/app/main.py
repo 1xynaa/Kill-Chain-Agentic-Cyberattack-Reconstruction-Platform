@@ -5,12 +5,12 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent import Agent
 from .config import Settings
 from .models import Investigation, ModelConfig, ReportResponse
+from .providers import PROVIDER_BASE_URLS
 from .report import build_report
 from .skills import load_skill_catalog
 from .storage import InvestigationStore
@@ -19,11 +19,10 @@ from .tools import ToolRunner
 settings = Settings()
 store = InvestigationStore(settings)
 runner = ToolRunner(settings)
-agent = Agent(settings, runner, Path(__file__).resolve().parents[2] / "skills")
-subscribers: dict[UUID, list[asyncio.Queue]] = {}
+skills_root = Path(__file__).resolve().parents[2] / "skills"
 model_config = ModelConfig()
-
-app = FastAPI(title="Kill Chain Backend", version="0.1.0")
+subscribers: dict[UUID, list[asyncio.Queue]] = {}
+app = FastAPI(title="Kill Chain Backend", version="0.2.0")
 
 
 class StartResponse(BaseModel):
@@ -43,7 +42,7 @@ def tools() -> list[dict[str, object]]:
 
 @app.get("/skills")
 def skills() -> list[dict[str, str]]:
-    return [item.model_dump() for item in load_skill_catalog(agent.skills_root)]
+    return [item.model_dump() for item in load_skill_catalog(skills_root)]
 
 
 @app.post("/upload", response_model=Investigation)
@@ -74,11 +73,21 @@ async def start(investigation_id: UUID) -> StartResponse:
 
 
 async def _run(investigation: Investigation) -> None:
+    investigator = Agent(settings, runner, skills_root, model_config)
+
     async def sink(event):
+        store.persist(investigation)
         for queue in list(subscribers.get(investigation.id, [])):
             await queue.put(event.model_dump(mode="json"))
-    await agent.investigate(investigation, sink)
-    investigation.report = build_report(investigation).model_dump(mode="json")
+
+    try:
+        await investigator.investigate(investigation, sink)
+        investigation.report = build_report(investigation).model_dump(mode="json")
+        store.persist(investigation)
+    except Exception as exc:
+        investigation.status = "failed"
+        investigation.report = {"error": str(exc)}
+        store.persist(investigation)
 
 
 @app.get("/investigation/{investigation_id}", response_model=Investigation)
@@ -100,6 +109,10 @@ def report(investigation_id: UUID) -> ReportResponse:
 @app.post("/config/model", response_model=ModelConfig)
 def configure_model(config: ModelConfig) -> ModelConfig:
     global model_config
+    if config.provider != "rule_based" and config.provider not in PROVIDER_BASE_URLS and not config.base_url:
+        raise HTTPException(400, "unknown provider requires an explicit base_url")
+    if config.provider != "rule_based" and not config.base_url:
+        config.base_url = PROVIDER_BASE_URLS[config.provider]
     model_config = config
     return ModelConfig(provider=config.provider, model=config.model, base_url=config.base_url, api_key="[configured]" if config.api_key else None)
 
@@ -107,7 +120,7 @@ def configure_model(config: ModelConfig) -> ModelConfig:
 @app.websocket("/ws/investigate/{investigation_id}")
 async def stream(websocket: WebSocket, investigation_id: UUID) -> None:
     try:
-        store.get(investigation_id)
+        investigation = store.get(investigation_id)
     except KeyError:
         await websocket.close(code=4404)
         return
@@ -115,13 +128,14 @@ async def stream(websocket: WebSocket, investigation_id: UUID) -> None:
     queue: asyncio.Queue = asyncio.Queue()
     subscribers.setdefault(investigation_id, []).append(queue)
     try:
-        for event in store.get(investigation_id).events:
+        for event in investigation.events:
             await websocket.send_json(event.model_dump(mode="json"))
         while True:
             await websocket.send_json(await queue.get())
     except WebSocketDisconnect:
         pass
     finally:
-        subscribers.get(investigation_id, []).remove(queue)
+        if queue in subscribers.get(investigation_id, []):
+            subscribers[investigation_id].remove(queue)
         if not subscribers.get(investigation_id):
             subscribers.pop(investigation_id, None)
