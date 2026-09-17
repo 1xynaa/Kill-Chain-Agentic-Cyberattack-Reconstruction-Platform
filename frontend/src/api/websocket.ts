@@ -25,7 +25,7 @@ export function connectInvestigation(
 ): WSConnection {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  const url = `${protocol}//${host}/ws/ws/investigate/${investigationId}`
+  const url = `${protocol}//${host}/ws/investigate/${investigationId}`
 
   onStatus?.('connecting')
 

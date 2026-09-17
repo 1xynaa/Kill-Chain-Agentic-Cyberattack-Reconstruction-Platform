@@ -211,7 +211,9 @@ function Mono({ children, col }: { children: React.ReactNode; col?: string }) {
 // Top bar
 // ─────────────────────────────────────────────────────────────────────────────
 function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:AppState; elapsed:number; calls:number; investigationId:string|null; onReset:()=>void }) {
-  const [model, setModel] = useState('rule_based')
+  const [model, setModel] = useState('rule_based:deterministic')
+  const [apiKey, setApiKey] = useState('')
+  const [modelError, setModelError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [searchFocus, setSearchFocus] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -219,18 +221,40 @@ function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:App
   const pct = Math.min(calls, 100)
   const meterCol = pct>80 ? RED : pct>55 ? AMBER : T2
   const fmt = (s:number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+  const hostedModel = model.split(':')[0] !== 'rule_based'
 
   const handleModelChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value
-    setModel(value)
+    const separator = value.indexOf(':')
+    const provider = separator === -1 ? value : value.slice(0, separator)
+    const selectedModel = separator === -1 ? 'deterministic' : value.slice(separator + 1)
+    if (provider !== 'rule_based' && !apiKey) {
+      setModelError('Enter an API key before selecting a hosted model')
+      return
+    }
+    setModelError(null)
     try {
-      if (value === 'rule_based') {
-        await configureModel({ provider: 'rule_based', model: 'deterministic' })
-      } else {
-        await configureModel({ provider: 'openai', model: value })
-      }
+      await configureModel({
+        provider,
+        model: selectedModel,
+        ...(apiKey ? { api_key: apiKey } : {}),
+      })
+      setModel(value)
     } catch (err) {
-      console.warn('Failed to change model:', err)
+      setModelError(err instanceof Error ? err.message : 'Model configuration failed')
+    }
+  }
+
+  const handleApiKeyBlur = async () => {
+    if (!hostedModel || !apiKey) return
+    const separator = model.indexOf(':')
+    const provider = separator === -1 ? model : model.slice(0, separator)
+    const selectedModel = separator === -1 ? model : model.slice(separator + 1)
+    try {
+      await configureModel({ provider, model: selectedModel, api_key: apiKey })
+      setModelError(null)
+    } catch (err) {
+      setModelError(err instanceof Error ? err.message : 'Model configuration failed')
     }
   }
 
@@ -326,15 +350,28 @@ function TopBar({ state, elapsed, calls, investigationId, onReset }: { state:App
         </div>
 
         {state !== 'empty' && <>
-          <select value={model} onChange={handleModelChange} style={{
+          <select value={model} onChange={handleModelChange} title="Model provider and model" style={{
             background:'transparent', border:'none', outline:'none',
             fontFamily:'JetBrains Mono', fontSize:11, color:T1, cursor:'pointer',
-            padding:'2px 0',
+            padding:'2px 0', maxWidth:150,
           }}>
-            <option value="rule_based">Rule-based</option>
-            <option value="gpt-4o">GPT-4o</option>
-            <option value="gpt-4o-mini">GPT-4o-mini</option>
+            <option value="rule_based:deterministic">Rule-based</option>
+            <option value="openrouter:nex-agi/nex-n2.5-pro:free">OpenRouter · Nex</option>
+            <option value="openai:gpt-4o-mini">OpenAI · GPT-4o-mini</option>
+            <option value="groq:llama-3.3-70b-versatile">Groq · Llama 3.3</option>
+            <option value="deepseek:deepseek-chat">DeepSeek · Chat</option>
+            <option value="xai:grok-3-mini">xAI · Grok 3 mini</option>
           </select>
+          {hostedModel && <input
+            type="password"
+            value={apiKey}
+            onChange={e=>setApiKey(e.target.value)}
+            onBlur={handleApiKeyBlur}
+            placeholder="API key"
+            aria-label="Hosted model API key"
+            style={{ width:76, background:'transparent', border:`1px solid ${EDGE}`, borderRadius:3, padding:'4px 6px', color:T0, fontFamily:'JetBrains Mono', fontSize:10, outline:'none' }}
+          />}
+          {modelError && <span title={modelError} style={{ color:RED, fontSize:10, maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>Model error</span>}
 
           <div style={{ display:'flex', flexDirection:'column', gap:3, minWidth:100 }}>
             <div style={{ display:'flex', justifyContent:'space-between' }}>

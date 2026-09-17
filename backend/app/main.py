@@ -157,6 +157,10 @@ def report(investigation_id: UUID) -> ReportResponse:
 @app.post("/config/model", response_model=ModelConfig)
 def configure_model(config: ModelConfig) -> ModelConfig:
     global model_config
+    if config.api_key is None and config.provider == model_config.provider:
+        config.api_key = model_config.api_key
+    if config.provider != "rule_based" and not config.api_key:
+        raise HTTPException(400, "api_key is required for hosted providers")
     if config.provider != "rule_based" and config.provider not in PROVIDER_BASE_URLS and not config.base_url:
         raise HTTPException(400, "unknown provider requires an explicit base_url")
     if config.provider != "rule_based" and not config.base_url:
