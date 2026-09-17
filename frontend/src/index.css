@@ -19,6 +19,7 @@ body {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  zoom: 1.15;
 }
 
 /* Dot grid — subtle, low contrast */
@@ -54,7 +55,7 @@ body {
 @keyframes bar-fill {
   from { width: 0; }
 }
-.bar-fill { animation: bar-fill 0.9s ease-out 0.1s both; }
+.bar-fill { animation: bar-fill 0.3s ease-out 0.05s both; }
 
 /* Thinking indicator */
 @keyframes blink {
@@ -79,7 +80,7 @@ body {
 }
 .edge-in {
   stroke-dasharray: 400;
-  animation: edge-in 0.7s ease-out both;
+  animation: edge-in 0.3s ease-out both;
 }
 
 /* Fade up — drawers, tables */
@@ -87,14 +88,14 @@ body {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-up { animation: fade-up 0.25s ease-out both; }
+.fade-up { animation: fade-up 0.15s ease-out both; }
 
 /* Arc gauge */
 @keyframes arc-draw {
   from { stroke-dashoffset: var(--from); }
   to   { stroke-dashoffset: var(--to); }
 }
-.arc-draw { animation: arc-draw 1.2s cubic-bezier(0.4,0,0.2,1) 0.3s both; }
+.arc-draw { animation: arc-draw 0.5s cubic-bezier(0.4,0,0.2,1) 0.1s both; }
 
 /* Node pop */
 @keyframes node-in {
@@ -110,5 +111,5 @@ body {
 }
 .check-draw {
   stroke-dasharray: 24;
-  animation: check 0.4s ease-out 0.1s both;
+  animation: check 0.2s ease-out 0.05s both;
 }

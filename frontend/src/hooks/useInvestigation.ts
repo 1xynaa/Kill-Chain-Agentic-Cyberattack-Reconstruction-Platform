@@ -255,6 +255,7 @@ export function useInvestigation(): InvestigationState {
       // Start investigation
       await startInvestigation(inv.id)
       setAppState('active')
+      setThinking(true)
 
       // Connect WebSocket
       const conn = connectInvestigation(inv.id, handleEvent, setWsStatus)
